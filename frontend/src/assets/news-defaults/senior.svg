@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-label="Mathematical Olympiad senior level">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1e1b4b"/><stop offset="1" stop-color="#6d28d9"/></linearGradient>
+    <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="#fff" stroke-opacity=".06" stroke-width="2"/></pattern>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <rect width="1200" height="675" fill="url(#grid)"/>
+  <g transform="translate(330 320)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle r="190" stroke="#c4b5fd" stroke-width="6"/>
+    <path d="M-164 95 L0 -190 L178 -66 Z" stroke="#fde047" stroke-width="7"/>
+    <path d="M-164 95 L178 -66" stroke="#fde047" stroke-width="7"/>
+    <path d="M0 -190 L7 13" stroke="#f0abfc" stroke-width="4" stroke-dasharray="12 12"/>
+    <circle cx="7" cy="13" r="9" fill="#f0abfc" stroke="none"/>
+    <path d="M-120 95 A44 44 0 0 0 -136 47" stroke="#fff" stroke-width="4"/>
+    <g fill="#fff" stroke="none" font-family="Georgia, serif" font-style="italic" font-size="40">
+      <text x="-205" y="130">A</text><text x="-14" y="-205">B</text><text x="192" y="-70">C</text><text x="-100" y="60" font-size="34">θ</text>
+    </g>
+  </g>
+  <g transform="translate(640 150)">
+    <path d="M0 330 H460 M20 350 V0" stroke="#c4b5fd" stroke-width="4" stroke-opacity=".7"/>
+    <path d="M20 250 C80 120 130 120 180 250 S280 380 330 250 S420 120 460 170" fill="none" stroke="#34d399" stroke-width="7" stroke-linecap="round"/>
+  </g>
+  <g fill="#fff" font-family="Georgia, 'Times New Roman', serif" font-style="italic">
+    <text x="700" y="135" font-size="56">e<tspan dy="-26" font-size="34">iπ</tspan><tspan dy="26"> + 1 = 0</tspan></text>
+    <text x="660" y="560" font-size="44" fill-opacity=".85">∫ sin x dx = −cos x + C</text>
+    <text x="90" y="110" font-size="48" fill-opacity=".35">∑ 1/n²</text>
+    <text x="1030" y="90" font-size="60" fill-opacity=".3">∂</text>
+  </g>
+  <text x="600" y="630" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="30" fill="#fff" fill-opacity=".92" letter-spacing="6">MATHEMATICAL OLYMPIAD · SENIOR</text>
+</svg>

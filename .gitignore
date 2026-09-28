@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.*
+!*.env.example
+backend/.env
+frontend/.env
+backend/uploads/
+uploads/
+.DS_Store
+npm-debug.log*
