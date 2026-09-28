@@ -81,6 +81,12 @@ button, input, select, textarea { font: inherit; }
 .news-card, .resource-card {
   background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
 }
+.news-card { position: relative; transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+.news-card:hover, .news-card:focus-within { transform: translateY(-2px); border-color: var(--blue); box-shadow: 0 12px 28px rgba(16, 23, 34, .12); }
+.news-card-link { display: block; height: 100%; }
+.news-card-link:focus-visible { outline: 3px solid rgba(18, 75, 216, .35); outline-offset: -3px; }
+.card-save-action { position: absolute; right: 18px; bottom: 18px; }
+.news-card .card-body { padding-bottom: 72px; }
 .card-media { height: 112px; display: grid; place-items: center; background: #e7f6ef; color: var(--green); font-weight: 900; }
 .card-body { padding: 18px; }
 .card-body h3 { margin: 8px 0; }
