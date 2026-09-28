@@ -82,6 +82,7 @@ export const api = {
   resources: () => request("/resources"),
   publicTaxonomies: () => request("/taxonomies"),
   meta: () => request("/meta"),
+  subscribe: (payload) => request("/subscribe", json("POST", payload)),
 
   adminLogin: (payload) => request("/admin/login", json("POST", payload)),
   adminLogout: () => request("/admin/logout", { method: "POST" }),

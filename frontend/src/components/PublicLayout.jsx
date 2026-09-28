@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import NotifyForm from "./NotifyForm.jsx";
 
 export default function PublicLayout() {
   return (
@@ -13,6 +14,7 @@ export default function PublicLayout() {
           <NavLink to="/about">About</NavLink>
           <NavLink to="/contact">Contact</NavLink>
         </nav>
+        <NotifyForm compact />
         <NavLink to="/admin" className="admin-access">Admin / Profile</NavLink>
       </header>
       <Outlet />

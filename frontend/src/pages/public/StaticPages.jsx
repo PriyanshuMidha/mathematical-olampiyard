@@ -1,3 +1,4 @@
+import NotifyForm from "../../components/NotifyForm.jsx";
 // Set in frontend/.env (see frontend/.env.example). Lines are hidden when unset.
 const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL;
 const CONTACT_PHONE = import.meta.env.VITE_CONTACT_PHONE;
@@ -18,6 +19,7 @@ export function Contact() {
       {CONTACT_EMAIL && <p>Email: <a className="text-link" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a></p>}
       {CONTACT_PHONE && <p>Phone: <a className="text-link" href={`tel:${CONTACT_PHONE.replace(/\s+/g, "")}`}>{CONTACT_PHONE}</a></p>}
       {!CONTACT_EMAIL && !CONTACT_PHONE && <p className="muted">Contact details can be added from environment settings when ready.</p>}
+      <NotifyForm />
     </main>
   );
 }

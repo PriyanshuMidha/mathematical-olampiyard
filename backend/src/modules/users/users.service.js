@@ -44,6 +44,30 @@ export async function create(body) {
   return safe(user);
 }
 
+export async function subscribe(body) {
+  const data = pick(body, ["name", "email", "preference"]);
+  if (typeof data.name === "string") data.name = data.name.trim();
+  if (typeof data.email === "string") data.email = data.email.toLowerCase().trim();
+  if (!EMAIL_PATTERN.test(data.email || "")) throw badRequest("A valid email is required");
+  if (data.preference !== undefined && !PREFERENCES.includes(data.preference)) {
+    throw badRequest(`Preference must be one of: ${PREFERENCES.join(", ")}`);
+  }
+
+  const update = {
+    email: data.email,
+    preference: data.preference || "All updates",
+    active: true,
+    ...(data.name ? { name: data.name } : {})
+  };
+  const user = await Subscriber.findOneAndUpdate(
+    { email: data.email },
+    { $set: update, $setOnInsert: { unsubscribeToken: crypto.randomBytes(24).toString("hex") } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  contentChanged("users");
+  return { email: user.email, preference: user.preference, active: user.active };
+}
+
 export async function update(id, body) {
   const user = await Subscriber.findById(id);
   if (!user) throw notFound("User");

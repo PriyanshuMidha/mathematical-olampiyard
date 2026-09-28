@@ -18,8 +18,15 @@ function page(res, status, body) {
 }
 
 const unsubscribeLimit = rateLimit({ name: "unsubscribe", windowMs: 60_000, max: 30, store: "memory" });
+const subscribeLimit = rateLimit({ name: "subscribe", windowMs: 60_000, max: 20, store: "memory" });
 
 export const publicRouter = Router();
+publicRouter.post(
+  "/subscribe",
+  subscribeLimit,
+  express.json({ limit: "10kb" }),
+  h(async (req, res) => res.status(201).json(await users.subscribe(req.body)))
+);
 
 // GET only shows a confirmation button. Email security scanners open links automatically,
 // so unsubscribing on GET would silently unsubscribe people who never clicked.
