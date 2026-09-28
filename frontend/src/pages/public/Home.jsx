@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import NewsCard from "../../components/NewsCard.jsx";
-import NotifyForm from "../../components/NotifyForm.jsx";
 import { Status } from "../../components/Status.jsx";
 import { api } from "../../services/api.js";
 import { useAsync } from "../../services/useAsync.js";
@@ -96,14 +95,6 @@ export default function Home() {
           </div>
         </section>
       )}
-
-      <section className="section-grid two">
-        <div>
-          <h2>Never miss an Olympiad update</h2>
-          <p className="muted">Students can subscribe directly, and admins can still manage users from the admin panel.</p>
-        </div>
-        <NotifyForm />
-      </section>
     </main>
   );
 }
