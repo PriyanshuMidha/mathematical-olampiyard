@@ -15,7 +15,7 @@ export default function PublicLayout() {
           <NavLink to="/contact">Contact</NavLink>
         </nav>
         <NotifyForm compact />
-        <NavLink to="/admin" className="admin-access">Admin / Profile</NavLink>
+        <NavLink to="/profile" className="admin-access">Profile</NavLink>
       </header>
       <Outlet />
       <footer className="footer">

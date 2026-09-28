@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 import NewsCard from "../../components/NewsCard.jsx";
+import SaveNewsButton from "../../components/SaveNewsButton.jsx";
 import { Status } from "../../components/Status.jsx";
 import { api } from "../../services/api.js";
 import { newsImage } from "../../services/newsImage.js";
@@ -32,6 +33,7 @@ export default function NewsDetail() {
           <div className="hero-actions">
             {news.attachmentUrl && <a className="button" href={news.attachmentUrl} target="_blank" rel="noreferrer">Download Notice</a>}
             {news.externalLink && <a className="button secondary" href={news.externalLink} target="_blank" rel="noreferrer">Open Link</a>}
+            <SaveNewsButton item={news} />
           </div>
         </article>
       </section>

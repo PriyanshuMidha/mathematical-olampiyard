@@ -256,3 +256,15 @@ img.detail-media { height: auto; aspect-ratio: 16 / 9; object-fit: cover; }
 
 .public-header .notify-form { flex: 0 1 360px; }
 @media (max-width: 900px) { .notify-form.compact { order: 4; width: 100%; min-width: 0; } .notify-row { flex-wrap: wrap; } .notify-row button { width: 100%; } }
+
+.card-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.save-btn { background: white; color: var(--blue); border: 1px solid var(--blue); }
+.save-btn[aria-pressed="true"] { background: var(--green); border-color: var(--green); color: white; }
+.save-btn.small { padding: 8px 12px; font-size: 13px; }
+.profile-heading { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.profile-panel { background: white; border: 1px solid var(--line); border-radius: 14px; padding: 22px; margin-bottom: 28px; }
+.profile-panel h2 { margin-top: 0; }
+.saved-card { display: grid; gap: 10px; }
+.remove-saved { justify-self: start; }
+.login-back { display: inline-block; text-align: center; }
+.main-site-link { border: 1px solid #334155; color: white !important; }

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { newsImage } from "../services/newsImage.js";
+import SaveNewsButton from "./SaveNewsButton.jsx";
 
 export default function NewsCard({ item }) {
   return (
@@ -9,7 +10,10 @@ export default function NewsCard({ item }) {
         <div className="meta">{item.category} · {item.level}</div>
         <h3>{item.title}</h3>
         <p>{item.shortDescription}</p>
-        <Link to={`/news/${item.slug}`} className="text-link">View details</Link>
+        <div className="card-actions">
+          <Link to={`/news/${item.slug}`} className="text-link">View details</Link>
+          <SaveNewsButton item={item} small />
+        </div>
       </div>
     </article>
   );

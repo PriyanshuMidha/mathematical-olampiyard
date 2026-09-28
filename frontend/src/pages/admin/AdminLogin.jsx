@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../services/api.js";
 import { hasSession, saveSession } from "../../services/auth.js";
 
@@ -38,6 +38,7 @@ export default function AdminLogin() {
         <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
         {error && <p className="error">{error}</p>}
         <button disabled={busy}>{busy ? "Logging in..." : "Login"}</button>
+        <Link className="text-link login-back" to="/">Back to Main Page</Link>
       </form>
     </main>
   );

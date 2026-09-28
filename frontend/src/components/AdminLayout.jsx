@@ -27,6 +27,7 @@ export default function AdminLayout() {
         </div>
         <nav id="admin-nav" className="admin-nav">
         {currentSession()?.name && <span className="muted">Signed in as {currentSession().name}</span>}
+        <NavLink to="/" className="main-site-link">Back to Main Page</NavLink>
         <NavLink to="/admin" end>Dashboard</NavLink>
         <NavLink to="/admin/news/new">Add Current News</NavLink>
         <NavLink to="/admin/news" end>Manage News</NavLink>

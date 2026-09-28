@@ -9,6 +9,7 @@ import NewsDetail from "./pages/public/NewsDetail.jsx";
 import Results from "./pages/public/Results.jsx";
 import Resources from "./pages/public/Resources.jsx";
 import { About, Contact } from "./pages/public/StaticPages.jsx";
+import Profile from "./pages/public/Profile.jsx";
 
 // Admin screens are loaded on demand, so public visitors never download the CMS code.
 const AdminLayout = lazy(() => import("./components/AdminLayout.jsx"));
@@ -37,6 +38,7 @@ function App() {
           <Route path="/resources" element={<Resources />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/profile" element={<Profile />} />
         </Route>
 
         <Route path="/admin/login" element={<AdminLogin />} />
