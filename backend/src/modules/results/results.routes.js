@@ -2,7 +2,7 @@ import { Router } from "express";
 import { asyncHandler as h } from "../../core/asyncHandler.js";
 import { uploadSingle } from "../uploads/storage.js";
 
-const file = uploadSingle("file", "results");
+const file = uploadSingle("file");
 import * as results from "./results.service.js";
 
 export const publicRouter = Router();

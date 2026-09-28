@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../services/api.js";
 import { useMeta } from "../../services/useMeta.js";
@@ -75,18 +75,72 @@ async function uploadToCloudflare(file, onProgress, maxBytes) {
   }
 }
 
+const MB = 1024 * 1024;
+
+// Unsaved work is kept in this tab (sessionStorage) so an expired session or accidental reload
+// doesn't lose a long article. Cleared after a successful save.
+function draftKey(id) {
+  return `newsDraft:${id || "new"}`;
+}
+function readDraft(id) {
+  try {
+    return JSON.parse(sessionStorage.getItem(draftKey(id)) || "null");
+  } catch {
+    return null;
+  }
+}
+function writeDraft(id, form) {
+  try {
+    sessionStorage.setItem(draftKey(id), JSON.stringify(form));
+  } catch {
+    /* storage unavailable: nothing to do */
+  }
+}
+function clearDraft(id) {
+  try {
+    sessionStorage.removeItem(draftKey(id));
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function NewsForm() {
   const { id } = useParams();
   const isEdit = Boolean(id);
   const { levels, categories } = useTaxonomies();
-  const { maxCloudUploadBytes } = useMeta();
+  const { maxCloudUploadBytes, maxUploadMb, cloudUploads } = useMeta();
   const [form, setForm] = useState(initial);
   const [files, setFiles] = useState({ image: null, attachment: null });
   const [existing, setExisting] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const dirty = useRef(false);
+  // A big attachment already uploaded to Cloudflare is reused if saving fails and the admin retries.
+  const cloudUpload = useRef({ file: null, url: "" });
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isEdit) return;
+    const draft = readDraft(id);
+    if (draft) {
+      setForm({ ...initial, ...draft });
+      setDraftRestored(true);
+    }
+  }, [id, isEdit]);
+
+  useEffect(() => {
+    if (dirty.current) writeDraft(id, form);
+  }, [id, form]);
+
+  function discardDraft() {
+    clearDraft(id);
+    setDraftRestored(false);
+    dirty.current = false;
+    if (existing) setForm(Object.fromEntries(Object.keys(initial).map((key) => [key, existing[key] ?? initial[key]])));
+    else setForm(initial);
+  }
 
   useEffect(() => {
     if (!isEdit) return;
@@ -94,12 +148,16 @@ export default function NewsForm() {
       .adminNewsItem(id)
       .then((news) => {
         setExisting(news);
-        setForm(Object.fromEntries(Object.keys(initial).map((key) => [key, news[key] ?? initial[key]])));
+        const saved = Object.fromEntries(Object.keys(initial).map((key) => [key, news[key] ?? initial[key]]));
+        const draft = readDraft(id);
+        setForm(draft ? { ...saved, ...draft } : saved);
+        if (draft) setDraftRestored(true);
       })
       .catch((err) => setError(err.message));
   }, [id, isEdit]);
 
   function update(field, value) {
+    dirty.current = true;
     setForm((current) => ({ ...current, [field]: value }));
   }
 
@@ -111,11 +169,18 @@ export default function NewsForm() {
       const payload = { ...form };
       if (files.image) payload.image = files.image;
       if (files.attachment) {
-        if (files.attachment.size > 40 * 1024 * 1024) {
+        // Normal uploads go through the API (limit MAX_UPLOAD_MB); larger ones straight to Cloudflare R2.
+        const directLimit = Math.min(40, maxUploadMb) * MB;
+        if (files.attachment.size <= directLimit) {
+          payload.attachment = files.attachment;
+        } else if (!cloudUploads) {
+          throw new Error(`The attachment is larger than ${Math.round(directLimit / MB)} MB. Bigger files need Cloudflare R2 to be set up (see docs/SETUP.md).`);
+        } else if (cloudUpload.current.file === files.attachment && cloudUpload.current.url) {
+          payload.attachmentUrl = cloudUpload.current.url;
+        } else {
           setUploadProgress(0);
           payload.attachmentUrl = await uploadToCloudflare(files.attachment, setUploadProgress, maxCloudUploadBytes);
-        } else {
-          payload.attachment = files.attachment;
+          cloudUpload.current = { file: files.attachment, url: payload.attachmentUrl };
         }
       }
       if (!isEdit && !payload.slug) delete payload.slug;
@@ -128,6 +193,7 @@ export default function NewsForm() {
       else if (email?.recipients) message = `News saved. Email skipped: SMTP not configured (${email.recipients} user(s)).`;
       else if (email?.error) message = `News saved, but ${email.error.toLowerCase()}.`;
 
+      clearDraft(id);
       navigate("/admin/news", { state: { notice: message } });
     } catch (err) {
       setError(err.message);
@@ -148,6 +214,12 @@ export default function NewsForm() {
           <p>Create the card shown on listing pages and the full detail page opened when users click it.</p>
         </div>
       </div>
+      {draftRestored && (
+        <p className="notice-bar">
+          Restored your unsaved changes from earlier.{" "}
+          <button type="button" className="ghost-dark small-btn" onClick={discardDraft}>Discard them</button>
+        </p>
+      )}
       <form className="admin-form" onSubmit={submit}>
         <label>News title<input value={form.title} onChange={(e) => update("title", e.target.value)} required /></label>
         {isEdit && (

@@ -59,8 +59,9 @@ export function createApp() {
     next();
   });
 
-  // Filenames are unique per upload, so browsers/CDNs may cache them for a long time.
-  app.use("/uploads", express.static(UPLOAD_DIR, { dotfiles: "deny", index: false, maxAge: "7d", immutable: true, setHeaders: uploadHeaders }));
+  // File names contain a hash of their content, so a name never points to different bytes:
+  // browsers/CDNs can cache them for a year and never re-download.
+  app.use("/uploads", express.static(UPLOAD_DIR, { dotfiles: "deny", index: false, maxAge: "365d", immutable: true, setHeaders: uploadHeaders }));
 
   app.get("/api/health", (_req, res) => {
     const db = isDbReady();
@@ -89,8 +90,9 @@ export function createApp() {
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
-    // A failed request must not leave its uploaded files behind.
-    requestFiles(req).forEach((file) => removeStoredFile(file.url));
+    // A failed request must not leave its uploaded files behind - but a file it merely reused
+    // (identical content already stored) may belong to other records and is left alone.
+    requestFiles(req).filter((file) => !file.reused).forEach((file) => removeStoredFile(file.url));
     const [status, message] = errorResponse(err);
     if (status >= 500) console.error(err);
     res.status(status).json({ message });

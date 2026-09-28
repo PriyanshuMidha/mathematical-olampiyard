@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
+import path from "node:path";
+import sharp from "sharp";
 import { skip, startTestApp, until } from "./helpers.js";
 
 describe("content: news, results, taxonomy, uploads, caching", { skip }, () => {
@@ -81,9 +84,13 @@ describe("content: news, results, taxonomy, uploads, caching", { skip }, () => {
     const html = await app.call("/api/admin/media", { method: "POST", cookie, form: form({}, { content: "<script>", type: "text/html", name: "x.html" }) });
     assert.equal(html.status, 400);
 
-    const disguised = await app.call("/api/admin/media", { method: "POST", cookie, form: form({}, { content: "png", type: "image/png", name: "evil.html" }) });
+    const fakeImage = await app.call("/api/admin/media", { method: "POST", cookie, form: form({}, { content: "not really a png", type: "image/png", name: "x.png" }) });
+    assert.equal(fakeImage.status, 400, "broken/fake images are rejected");
+
+    const tinyPng = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#f00" } }).png().toBuffer();
+    const disguised = await app.call("/api/admin/media", { method: "POST", cookie, form: form({}, { content: tinyPng, type: "image/png", name: "evil.html" }) });
     assert.equal(disguised.status, 201);
-    assert.match(disguised.json.url, /evil\.png$/);
+    assert.match(disguised.json.url, /\/evil-[a-f0-9]{24}\.(png|webp)$/, "extension from MIME type, never .html");
 
     const failed = await app.call("/api/admin/results", {
       method: "POST",
@@ -105,6 +112,44 @@ describe("content: news, results, taxonomy, uploads, caching", { skip }, () => {
 
     assert.equal((await app.call(`/api/admin/results/${ok.json._id}`, { method: "DELETE", cookie })).status, 200);
     assert.equal((await fetch(`${app.base}${filePath}`)).status, 404, "file removed with record");
+  });
+
+  test("large photos are resized to max 1600px WebP and EXIF is stripped", async () => {
+    const photo = await sharp({ create: { width: 4000, height: 3000, channels: 3, noise: { type: "gaussian", mean: 128, sigma: 40 } } })
+      .jpeg({ quality: 95 })
+      .withMetadata({ exif: { IFD0: { Copyright: "secret-gps-test" } } })
+      .toBuffer();
+    const fd = new FormData();
+    fd.append("file", new Blob([photo], { type: "image/jpeg" }), "phone-photo.jpg");
+    const res = await app.call("/api/admin/media", { method: "POST", cookie, form: fd });
+    assert.equal(res.status, 201);
+    assert.equal(res.json.mimeType, "image/webp");
+    assert.ok(res.json.size < photo.length / 3, `stored ${res.json.size} B vs original ${photo.length} B`);
+    const stored = fs.readFileSync(path.join(process.env.UPLOAD_DIR, path.basename(res.json.url)));
+    const meta = await sharp(stored).metadata();
+    assert.equal(meta.width, 1600);
+    assert.equal(meta.exif, undefined, "metadata removed");
+  });
+
+  test("identical uploads are stored once and kept while any record uses them", async () => {
+    const pdf = Buffer.from("%PDF-1.4 same syllabus " + "x".repeat(2000));
+    const make = (title) => {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries({ title, level: "Junior", year: "2026", status: "published" })) fd.append(k, v);
+      fd.append("file", new Blob([pdf], { type: "application/pdf" }), "syllabus.pdf");
+      return app.call("/api/admin/results", { method: "POST", cookie, form: fd });
+    };
+    const before = fs.readdirSync(process.env.UPLOAD_DIR).length;
+    const a = await make("Copy A");
+    const b = await make("Copy B");
+    assert.equal(a.json.fileUrl, b.json.fileUrl, "same stored file");
+    assert.equal(fs.readdirSync(process.env.UPLOAD_DIR).length, before + 1, "stored once");
+
+    const filePath = new URL(a.json.fileUrl).pathname;
+    await app.call(`/api/admin/results/${a.json._id}`, { method: "DELETE", cookie });
+    assert.equal((await fetch(`${app.base}${filePath}`)).status, 200, "still used by Copy B");
+    await app.call(`/api/admin/results/${b.json._id}`, { method: "DELETE", cookie });
+    assert.equal((await fetch(`${app.base}${filePath}`)).status, 404, "removed when nothing uses it");
   });
 
   test("taxonomy in use cannot be deleted", async () => {

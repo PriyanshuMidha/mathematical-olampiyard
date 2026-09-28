@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { badRequest, notFound } from "../../core/errors.js";
 import { contentChanged } from "../../core/contentChanged.js";
 import { EMAIL_PATTERN, pick, toBool } from "../../core/validate.js";
+import { sendSubscriptionConfirmation } from "../notifications/confirmation.js";
 import Subscriber, { PREFERENCES } from "./subscriber.model.js";
 
 // Which preferences receive a news item of a given category ("All updates" gets everything).
@@ -11,10 +12,10 @@ const PREFERENCE_CATEGORIES = {
   Resources: ["Syllabus", "Sample Paper"]
 };
 
-const HIDDEN = "-unsubscribeToken";
+const HIDDEN = "-unsubscribeToken -confirmToken";
 
 function safe(doc) {
-  const { unsubscribeToken, ...rest } = doc.toObject ? doc.toObject() : doc;
+  const { unsubscribeToken, confirmToken, ...rest } = doc.toObject ? doc.toObject() : doc;
   return rest;
 }
 
@@ -44,28 +45,62 @@ export async function create(body) {
   return safe(user);
 }
 
-export async function subscribe(body) {
-  const data = pick(body, ["name", "email", "preference"]);
-  if (typeof data.name === "string") data.name = data.name.trim();
-  if (typeof data.email === "string") data.email = data.email.toLowerCase().trim();
-  if (!EMAIL_PATTERN.test(data.email || "")) throw badRequest("A valid email is required");
-  if (data.preference !== undefined && !PREFERENCES.includes(data.preference)) {
-    throw badRequest(`Preference must be one of: ${PREFERENCES.join(", ")}`);
-  }
+const CONFIRM_TTL_MS = 7 * 24 * 60 * 60_000;
+const SIGNUP_REPLY = { ok: true, message: "Check your inbox: we sent you a link to confirm your email." };
 
-  const update = {
-    email: data.email,
-    preference: data.preference || "All updates",
-    active: true,
-    ...(data.name ? { name: data.name } : {})
-  };
+// Public sign-up with double opt-in. Anyone can type any address into a form, so:
+// - nobody is emailed news until the owner clicks the confirmation link;
+// - an existing active subscriber is never changed by this form (a stranger can't alter their settings);
+// - the reply is identical whatever happens, so the form doesn't reveal who is subscribed.
+export async function subscribe(body) {
+  const email = typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
+  if (!EMAIL_PATTERN.test(email) || email.length > 254) throw badRequest("A valid email is required");
+  const preference = body.preference === undefined ? "All updates" : body.preference;
+  if (!PREFERENCES.includes(preference)) throw badRequest(`Preference must be one of: ${PREFERENCES.join(", ")}`);
+  const name = typeof body.name === "string" ? body.name.trim().slice(0, 100) : "";
+
+  const existing = await Subscriber.findOne({ email }).select("active").lean();
+  if (existing?.active) return SIGNUP_REPLY;
+
+  const token = crypto.randomBytes(24).toString("hex");
+  try {
+    await Subscriber.updateOne(
+      { email, active: { $ne: true } },
+      {
+        $set: { preference, active: false, confirmToken: token, confirmSentAt: new Date(), ...(name ? { name } : {}) },
+        $setOnInsert: { unsubscribeToken: crypto.randomBytes(24).toString("hex"), source: "public" }
+      },
+      { upsert: true }
+    );
+  } catch (error) {
+    if (error?.code === 11000) return SIGNUP_REPLY; // same address submitted twice at once
+    throw error;
+  }
+  // Not awaited: the reply must take the same time whether or not an email goes out (no subscriber probing).
+  sendSubscriptionConfirmation({ email, token });
+  return SIGNUP_REPLY;
+}
+
+function validToken(token) {
+  return typeof token === "string" && /^[a-f0-9]{48}$/.test(token);
+}
+
+export async function findByConfirmToken(token) {
+  if (!validToken(token)) return null;
+  return Subscriber.findOne({ confirmToken: token, confirmSentAt: { $gt: new Date(Date.now() - CONFIRM_TTL_MS) } }).select("email").lean();
+}
+
+export async function confirmSubscription(token) {
+  if (!validToken(token)) return null;
   const user = await Subscriber.findOneAndUpdate(
-    { email: data.email },
-    { $set: update, $setOnInsert: { unsubscribeToken: crypto.randomBytes(24).toString("hex") } },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  );
-  contentChanged("users");
-  return { email: user.email, preference: user.preference, active: user.active };
+    { confirmToken: token, confirmSentAt: { $gt: new Date(Date.now() - CONFIRM_TTL_MS) } },
+    { $set: { active: true, confirmedAt: new Date() }, $unset: { confirmToken: 1 } },
+    { new: true }
+  )
+    .select("email")
+    .lean();
+  if (user) contentChanged("users");
+  return user;
 }
 
 export async function update(id, body) {

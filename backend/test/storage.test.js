@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -42,7 +43,7 @@ describe("Cloudflare R2 storage cap + scheduled jobs", { skip }, () => {
     fd.append("level", "Junior");
     fd.append("year", "2026");
     fd.append("status", "published");
-    fd.append("file", new Blob([Buffer.alloc(bytes, 1)], { type: "application/pdf" }), "f.pdf");
+    fd.append("file", new Blob([crypto.randomBytes(bytes)], { type: "application/pdf" }), "f.pdf"); // unique content (no dedupe)
     return app.call("/api/admin/results", { method: "POST", cookie, form: fd });
   };
   const start = (fileSize) => app.call("/api/admin/uploads/r2/start", { method: "POST", cookie, body: { fileName: "big.pdf", fileType: "application/pdf", fileSize } });
@@ -59,7 +60,7 @@ describe("Cloudflare R2 storage cap + scheduled jobs", { skip }, () => {
   test("form uploads go to R2 and are counted; over-limit upload is refused and not stored", async () => {
     const a = await uploadResult(500, "A");
     assert.equal(a.status, 201);
-    assert.ok(a.json.fileUrl.startsWith(`${PUBLIC}/results/`));
+    assert.ok(a.json.fileUrl.startsWith(`${PUBLIC}/files/`));
     assert.equal((await usage()).usedBytes, 500);
     assert.equal((await uploadResult(500, "B")).status, 201);
     const c = await uploadResult(500, "C");
@@ -87,6 +88,56 @@ describe("Cloudflare R2 storage cap + scheduled jobs", { skip }, () => {
     assert.equal(res.status, 507);
     assert.equal(s3.objects.has(cheat.json.key), false);
     assert.equal((await usage()).usedBytes, 600);
+  });
+
+  test("re-uploading the same file reuses the stored object and uses no extra quota", async () => {
+    const same = crypto.randomBytes(100);
+    const up = (title) => {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries({ title, level: "Junior", year: "2026", status: "published" })) fd.append(k, v);
+      fd.append("file", new Blob([same], { type: "application/pdf" }), "same.pdf");
+      return app.call("/api/admin/results", { method: "POST", cookie, form: fd });
+    };
+    const used = (await usage()).usedBytes;
+    const first = await up("Same 1");
+    const second = await up("Same 2");
+    assert.equal(first.status, 201);
+    assert.equal(second.json.fileUrl, first.json.fileUrl);
+    assert.equal((await usage()).usedBytes, used + 100, "counted once");
+    await app.call(`/api/admin/results/${second.json._id}`, { method: "DELETE", cookie });
+    assert.ok(s3.objects.has(new URL(first.json.fileUrl).pathname.slice(1)), "kept for Same 1");
+    await app.call(`/api/admin/results/${first.json._id}`, { method: "DELETE", cookie });
+    assert.equal((await usage()).usedBytes, used);
+  });
+
+  test("two identical uploads at the same moment both succeed and are counted once", async () => {
+    const same = crypto.randomBytes(80);
+    const up = (title) => {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries({ title, level: "Junior", year: "2026", status: "published" })) fd.append(k, v);
+      fd.append("file", new Blob([same], { type: "application/pdf" }), "twin.pdf");
+      return app.call("/api/admin/results", { method: "POST", cookie, form: fd });
+    };
+    const used = (await usage()).usedBytes;
+    const [a, b] = await Promise.all([up("Twin A"), up("Twin B")]);
+    assert.equal(a.status, 201);
+    assert.equal(b.status, 201);
+    assert.equal(a.json.fileUrl, b.json.fileUrl);
+    assert.equal((await usage()).usedBytes, used + 80);
+    await app.call(`/api/admin/results/${a.json._id}`, { method: "DELETE", cookie });
+    await app.call(`/api/admin/results/${b.json._id}`, { method: "DELETE", cookie });
+  });
+
+  test("abort can't delete a finished file that records use", async () => {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries({ title: "Keep me", level: "Junior", year: "2026", status: "published" })) fd.append(k, v);
+    fd.append("file", new Blob([crypto.randomBytes(60)], { type: "application/pdf" }), "keep.pdf");
+    const res = await app.call("/api/admin/results", { method: "POST", cookie, form: fd });
+    const key = new URL(res.json.fileUrl).pathname.slice(1);
+    const abort = await app.call("/api/admin/uploads/r2/abort", { method: "POST", cookie, body: { key } });
+    assert.equal(abort.status, 200);
+    assert.ok(s3.objects.has(key), "finished file untouched");
+    await app.call(`/api/admin/results/${res.json._id}`, { method: "DELETE", cookie });
   });
 
   test("storage-reconcile job recounts the bucket and aborts stale multipart uploads", async () => {

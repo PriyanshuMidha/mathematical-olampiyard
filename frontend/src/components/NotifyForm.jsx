@@ -3,7 +3,7 @@ import { api } from "../services/api.js";
 import { useMeta } from "../services/useMeta.js";
 
 export default function NotifyForm({ compact = false }) {
-  const { preferences = ["All updates"] } = useMeta();
+  const { userPreferences: preferences } = useMeta();
   const [email, setEmail] = useState("");
   const [preference, setPreference] = useState("All updates");
   const [message, setMessage] = useState("");
@@ -17,7 +17,8 @@ export default function NotifyForm({ compact = false }) {
     setBusy(true);
     try {
       const result = await api.subscribe({ email, preference });
-      setMessage(result.active ? "Notifications enabled." : "Saved.");
+      // Same reply for everyone: the address only starts receiving news after its owner confirms.
+      setMessage(result.message || "Check your inbox to confirm your email.");
       setEmail("");
       setPreference("All updates");
     } catch (err) {
@@ -30,7 +31,7 @@ export default function NotifyForm({ compact = false }) {
   return (
     <form className={compact ? "notify-form compact" : "notify-form"} onSubmit={submit}>
       {!compact && <h2>Get news notifications</h2>}
-      {!compact && <p className="muted">Enter your email to receive new Mathematical Olympiad updates when they are published.</p>}
+      {!compact && <p className="muted">Enter your email to receive new Mathematical Olympiad updates when they are published. We'll send a link to confirm it's you.</p>}
       <div className="notify-row">
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="student@email.com" required />
         {!compact && (
@@ -40,7 +41,6 @@ export default function NotifyForm({ compact = false }) {
         )}
         <button disabled={busy}>{busy ? "..." : compact ? "Notify" : "Subscribe"}</button>
       </div>
-      {compact && <input type="hidden" value={preference} readOnly />}
       {message && <p className="success">{message}</p>}
       {error && <p className="error">{error}</p>}
     </form>

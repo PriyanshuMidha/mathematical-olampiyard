@@ -9,7 +9,8 @@ export const MONGO = process.env.TEST_MONGODB_URI;
 export const skip = !MONGO && "TEST_MONGODB_URI not set";
 
 export const ADMIN = { email: "tester", password: "Test-password-123" };
-export const smtp = { messages: [] };
+// down=true simulates a provider outage (451 on every message); reject = addresses answered with 550.
+export const smtp = { messages: [], down: false, reject: new Set() };
 
 function startFakeSmtp() {
   const server = net.createServer((socket) => {
@@ -36,8 +37,14 @@ function startFakeSmtp() {
         const cmd = line.toUpperCase();
         if (cmd.startsWith("EHLO")) socket.write("250-fake\r\n250 AUTH PLAIN LOGIN\r\n");
         else if (cmd.startsWith("AUTH")) write("235 ok");
+        else if (cmd.startsWith("MAIL") && smtp.down) write("451 Temporary failure, try again later");
         else if (cmd.startsWith("RCPT")) {
-          current.to.push(line.slice(line.indexOf(":") + 1).trim().replace(/[<>]/g, ""));
+          const rcpt = line.slice(line.indexOf(":") + 1).trim().replace(/[<>]/g, "");
+          if (smtp.reject.has(rcpt)) {
+            write("550 Mailbox does not exist");
+            continue;
+          }
+          current.to.push(rcpt);
           write("250 ok");
         } else if (cmd.startsWith("DATA")) {
           data = true;

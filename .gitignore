@@ -1,11 +1,11 @@
-node_modules/
-dist/
+# Secrets - never commit real settings (the *.example files are safe to commit)
 .env
 .env.*
-!*.env.example
-backend/.env
-frontend/.env
+!.env.example
+!.env.production.example
+
+node_modules/
+dist/
 backend/uploads/
-uploads/
+*.log
 .DS_Store
-npm-debug.log*

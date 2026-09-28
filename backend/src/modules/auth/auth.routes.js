@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { config } from "../../config/env.js";
 import { asyncHandler as h } from "../../core/asyncHandler.js";
+import { readCookie } from "../../core/cookies.js";
 import { clientKey, rateLimit } from "../../core/rateLimit.js";
 import * as auth from "./auth.service.js";
 
@@ -31,10 +32,14 @@ function sendSession(res, { token, expiresAt, admin }) {
 // Mounted before requireAdmin.
 export const openAdminRouter = Router();
 openAdminRouter.post("/login", loginIpLimit, h(async (req, res) => sendSession(res, await auth.login(req.body, clientKey(req)))));
-openAdminRouter.post("/logout", (_req, res) => {
-  res.clearCookie(config.cookie.name, cookieOptions());
-  res.json({ ok: true });
-});
+openAdminRouter.post(
+  "/logout",
+  h(async (req, res) => {
+    await auth.logout(readCookie(req, config.cookie.name));
+    res.clearCookie(config.cookie.name, cookieOptions());
+    res.json({ ok: true });
+  })
+);
 
 export const adminRouter = Router();
 adminRouter.get("/me", (req, res) => res.json({ admin: auth.publicAdmin(req.admin) }));

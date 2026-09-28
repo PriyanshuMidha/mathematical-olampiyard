@@ -12,6 +12,9 @@ function apiBase() {
 }
 const API_BASE = apiBase();
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_REQUEST_TIMEOUT_MS || 15000);
+// File uploads can take minutes on slow connections; aborting them early could make the admin retry
+// while the first upload still completes on the server.
+const UPLOAD_TIMEOUT_MS = 10 * 60_000;
 
 async function rawRequest(path, options = {}) {
   const response = await request(path, options);
@@ -21,7 +24,7 @@ async function rawRequest(path, options = {}) {
 async function request(path, options = {}) {
   const isForm = options.body instanceof FormData;
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = window.setTimeout(() => controller.abort(), isForm ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
   let response;
 
   try {

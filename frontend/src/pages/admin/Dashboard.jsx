@@ -27,7 +27,7 @@ function SystemPanel() {
   const [message, setMessage] = useState("");
   if (error) return <p className="empty error">{error}</p>;
   if (!data) return null;
-  const { storage, jobs } = data;
+  const { storage, jobs, email } = data;
 
   async function run(name) {
     setBusy(name);
@@ -63,6 +63,22 @@ function SystemPanel() {
           <small className="muted">Local disk (Cloudflare R2 not configured yet — add the R2_* settings to enable the 9.5 GB cloud storage).</small>
         )}
       </div>
+      {email && (
+        <div className="metric">
+          <span>Email notifications</span>
+          <strong className="storage-figure">{email.configured ? email.provider : "Not set up"}</strong>
+          <small className="muted">
+            {email.configured ? <>From: {email.from}{email.replyTo ? ` · replies to ${email.replyTo}` : ""}</> : "Add SMTP_* settings in backend/.env to send emails."}
+          </small>
+          <small className="muted">
+            Sent today: {email.sentToday}{email.dailyLimit ? ` of ${email.dailyLimit}` : ""} · queued: {email.queued} · sending: {email.sending}
+          </small>
+          <small className="muted">
+            Background sender: {email.worker.started ? `running (checks every ${email.worker.pollSeconds}s${email.worker.lastCheckAt ? `, last ${new Date(email.worker.lastCheckAt).toLocaleTimeString()}` : ""})` : "stopped"}
+          </small>
+          {email.lastJob?.lastError && <small className="error">Last job: {email.lastJob.lastError}</small>}
+        </div>
+      )}
       <div className="metric">
         <span>Scheduled jobs</span>
         <div className="job-list">

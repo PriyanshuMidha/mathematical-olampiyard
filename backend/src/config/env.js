@@ -91,7 +91,9 @@ export const config = Object.freeze({
     port: num(process.env.SMTP_PORT, 587),
     user: process.env.SMTP_USER || "",
     pass: process.env.SMTP_PASS || "",
-    from: process.env.EMAIL_FROM || "Mathematical Olympiad <no-reply@localhost>"
+    from: process.env.EMAIL_FROM || "Mathematical Olympiad <no-reply@localhost>",
+    // Optional: where replies go (e.g. your school/contact inbox). Empty = replies go to EMAIL_FROM.
+    replyTo: process.env.EMAIL_REPLY_TO || ""
   },
 
   // Scheduled background jobs (run by one instance at a time, coordinated through MongoDB).
@@ -106,7 +108,15 @@ export const config = Object.freeze({
     pollMs: num(process.env.NOTIFY_POLL_MS, 10_000),
     batchSize: num(process.env.NOTIFY_BATCH_SIZE, 100),
     concurrency: num(process.env.NOTIFY_CONCURRENCY, 5),
-    lockMs: num(process.env.NOTIFY_LOCK_MS, 5 * 60_000)
+    lockMs: num(process.env.NOTIFY_LOCK_MS, 5 * 60_000),
+    // Max emails per UTC day across all servers (free plans: Brevo 300, Mailjet 200, SMTP2GO 200). 0 = no limit.
+    dailyLimit: num(process.env.NOTIFY_DAILY_LIMIT, 0),
+    // Sign-up confirmation emails get their own small share so fake sign-ups can never use up the
+    // quota that news emails need (default: 20% of NOTIFY_DAILY_LIMIT, or 500/day when unlimited).
+    confirmDailyLimit: num(
+      process.env.NOTIFY_CONFIRM_DAILY_LIMIT,
+      num(process.env.NOTIFY_DAILY_LIMIT, 0) ? Math.max(1, Math.floor(num(process.env.NOTIFY_DAILY_LIMIT, 0) * 0.2)) : 500
+    )
   },
 
   // Used only by `npm run seed`. No default password on purpose.
@@ -128,6 +138,16 @@ export function assertConfig() {
   }
   if (!["lax", "strict", "none"].includes(config.cookie.sameSite)) errors.push("COOKIE_SAMESITE must be lax, strict or none");
   if (config.cookie.sameSite === "none" && !config.cookie.secure) errors.push("COOKIE_SAMESITE=none requires COOKIE_SECURE=true (HTTPS)");
+  if (/change-this|example|secret-at-least/i.test(config.jwt.secret)) {
+    const message = "JWT_SECRET is still the example value; generate one with `openssl rand -hex 32`";
+    if (config.isProd) errors.push(message);
+    else console.warn(`Warning: ${message}`);
+  }
+  if (config.trustProxy === true) {
+    const message = "TRUST_PROXY=true lets any client fake its IP (bypassing rate limits); use the number of proxies, e.g. TRUST_PROXY=1";
+    if (config.isProd) errors.push(message);
+    else console.warn(`Warning: ${message}`);
+  }
   if (config.isProd && !config.trustProxy) {
     console.warn("Warning: TRUST_PROXY is not set. If the API runs behind a load balancer/proxy, set TRUST_PROXY=1 or all visitors share one rate limit.");
   }

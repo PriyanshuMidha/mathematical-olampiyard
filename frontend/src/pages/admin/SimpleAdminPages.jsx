@@ -268,7 +268,7 @@ export function UsersAdmin() {
           <div className="table-row" key={item._id}>
             <div>
               <strong>{item.name || item.email}</strong>
-              <span>{item.email} · {item.preference} · {item.active ? "active" : "inactive"}</span>
+              <span>{item.email} · {item.preference} · {item.active ? "active" : item.source === "public" && !item.confirmedAt ? "awaiting email confirmation" : "inactive"}{item.source === "public" ? " · signed up on website" : ""}</span>
             </div>
             <div className="row-actions">
               <button className="button small" onClick={() => startEdit(item)}>Edit</button>

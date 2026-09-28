@@ -13,7 +13,7 @@ const emailJobSchema = new mongoose.Schema(
       level: String,
       category: String
     },
-    status: { type: String, enum: ["queued", "sending", "sent", "failed", "skipped"], default: "queued", index: true },
+    status: { type: String, enum: ["queued", "sending", "sent", "failed", "skipped"], default: "queued" },
     cursor: { type: mongoose.Schema.Types.ObjectId }, // last recipient processed (resume point after a crash)
     sent: { type: Number, default: 0 },
     failed: { type: Number, default: 0 },

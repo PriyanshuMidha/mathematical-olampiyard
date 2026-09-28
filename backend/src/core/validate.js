@@ -1,6 +1,9 @@
 import { badRequest } from "./errors.js";
 
-export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// One plain address only. Characters like , < > " ; ( ) : and spaces are rejected, because mail
+// libraries would treat "a,victim@x.com" or "x<victim@x.com>" as (another) real recipient.
+export const EMAIL_PATTERN =
+  /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
 
 export function pick(source = {}, fields) {
   const out = {};

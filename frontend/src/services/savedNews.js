@@ -27,10 +27,23 @@ function read() {
   });
 }
 
+// Returns false when the browser blocks or has no room in storage (private mode, storage full).
 function writeItems(items) {
-  localStorage.setItem(KEY, JSON.stringify(items));
-  localStorage.removeItem(LEGACY_KEY);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(items));
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    return false;
+  }
   window.dispatchEvent(new CustomEvent("saved-news-changed"));
+  return true;
+}
+
+// Keeps Save buttons in sync when items are saved in another tab of the same browser.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key === KEY || event.key === LEGACY_KEY) window.dispatchEvent(new CustomEvent("saved-news-changed"));
+  });
 }
 
 function snapshot(item, type = "news") {
@@ -67,19 +80,16 @@ export function isSaved(item, type = "news") {
 export function saveNews(item, type = "news") {
   const next = snapshot(item, type);
   const current = read().filter((saved) => saved.key !== next.key);
-  writeItems([next, ...current].slice(0, 300));
+  return writeItems([next, ...current].slice(0, 300));
 }
 
 export function removeSavedNews(itemOrKey) {
   const key = typeof itemOrKey === "string" && itemOrKey.includes(":") ? itemOrKey : `news:${itemOrKey}`;
-  writeItems(read().filter((item) => item.key !== key && item.slug !== itemOrKey));
+  return writeItems(read().filter((item) => item.key !== key && item.slug !== itemOrKey));
 }
 
+// Returns { saved, ok }: the state after the attempt, and whether the browser allowed storing it.
 export function toggleSavedNews(item, type = "news") {
-  if (isSaved(item, type)) {
-    removeSavedNews(itemKey(item, type));
-    return false;
-  }
-  saveNews(item, type);
-  return true;
+  const ok = isSaved(item, type) ? removeSavedNews(itemKey(item, type)) : saveNews(item, type);
+  return { saved: isSaved(item, type), ok };
 }

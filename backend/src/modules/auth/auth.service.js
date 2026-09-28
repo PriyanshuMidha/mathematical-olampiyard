@@ -1,15 +1,20 @@
+import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { config } from "../../config/env.js";
 import { badRequest, conflict, notFound, tooMany, unauthorized } from "../../core/errors.js";
 import { hit, peek, resetHits } from "../../core/rateLimit.js";
 import Admin from "./admin.model.js";
+import RevokedToken from "./revokedToken.model.js";
 
 const ACCOUNT_WINDOW_MS = 15 * 60 * 1000;
 // Failed logins are limited per (account + client network) so an attacker can't lock the real admin
 // out from elsewhere, plus a much higher per-account total that slows attacks spread over many IPs.
 const ACCOUNT_MAX_FAILURES_PER_CLIENT = 10;
 const ACCOUNT_MAX_FAILURES_TOTAL = 100;
+// Networks an admin has successfully logged in from recently are exempt from the account-wide ceiling,
+// so an attacker spreading guesses over many networks can't lock the real admin out.
+const TRUSTED_WINDOW_MS = 30 * 24 * 60 * 60_000;
 // bcryptjs runs on the main thread; 10 is the accepted minimum and keeps logins ~100ms of CPU.
 export const BCRYPT_ROUNDS = 10;
 // Compared against when the account doesn't exist, so response time doesn't reveal valid usernames.
@@ -33,7 +38,7 @@ function identifierOf(value) {
 }
 
 function sign(admin) {
-  return jwt.sign({ sub: String(admin._id), ver: admin.tokenVersion || 0 }, config.jwt.secret, {
+  return jwt.sign({ sub: String(admin._id), ver: admin.tokenVersion || 0, jti: crypto.randomUUID() }, config.jwt.secret, {
     expiresIn: config.jwt.expiresIn,
     issuer: config.jwt.issuer,
     algorithm: "HS256"
@@ -58,28 +63,46 @@ export async function login({ email, password }, client = "unknown") {
   const window = { windowMs: ACCOUNT_WINDOW_MS };
   const locked = () => tooMany("Too many failed attempts for this account. Try again in 15 minutes.");
 
+  const trustedKey = `login-trusted:${identifier}:${client}`;
   // Checked BEFORE the password: a locked client gets no answer about whether a guess was right.
-  const [clientFailures, totalFailures] = await Promise.all([peek(clientAccountKey, window), peek(accountKey, window)]);
-  if (clientFailures >= ACCOUNT_MAX_FAILURES_PER_CLIENT || totalFailures >= ACCOUNT_MAX_FAILURES_TOTAL) throw locked();
+  const [clientFailures, totalFailures, trusted] = await Promise.all([
+    peek(clientAccountKey, window),
+    peek(accountKey, window),
+    peek(trustedKey, { windowMs: TRUSTED_WINDOW_MS })
+  ]);
+  if (clientFailures >= ACCOUNT_MAX_FAILURES_PER_CLIENT) throw locked();
+  if (totalFailures >= ACCOUNT_MAX_FAILURES_TOTAL && !trusted) throw locked();
   const admin = await Admin.findOne({ email: identifier }).lean();
   const valid = await bcrypt.compare(password, admin?.passwordHash || DUMMY_HASH);
 
   if (!admin || !valid) {
     const [fromClient, total] = await Promise.all([hit(clientAccountKey, window), hit(accountKey, window)]);
-    if (fromClient > ACCOUNT_MAX_FAILURES_PER_CLIENT || total > ACCOUNT_MAX_FAILURES_TOTAL) throw locked();
+    if (fromClient > ACCOUNT_MAX_FAILURES_PER_CLIENT || (total > ACCOUNT_MAX_FAILURES_TOTAL && !trusted)) throw locked();
     throw unauthorized("Invalid credentials");
   }
 
   await resetHits(clientAccountKey, window);
+  await hit(trustedKey, { windowMs: TRUSTED_WINDOW_MS });
   return session(admin);
 }
 
 export async function verifyToken(token) {
   const payload = jwt.verify(token, config.jwt.secret, { algorithms: ["HS256"], issuer: config.jwt.issuer });
+  if (payload.jti && (await RevokedToken.exists({ _id: payload.jti }))) return null;
   // Looked up on every request: deleting an admin or changing their password revokes old sessions at once.
   const admin = await Admin.findById(payload.sub).select("-passwordHash").lean();
   if (!admin || (admin.tokenVersion || 0) !== (payload.ver || 0)) return null;
   return admin;
+}
+
+// Ends this session on the server (not just in the browser), until its natural expiry.
+export async function logout(token) {
+  try {
+    const payload = jwt.verify(token, config.jwt.secret, { algorithms: ["HS256"], issuer: config.jwt.issuer });
+    if (payload.jti) await RevokedToken.updateOne({ _id: payload.jti }, { $set: { expiresAt: new Date(payload.exp * 1000) } }, { upsert: true });
+  } catch {
+    /* invalid/expired token: nothing to revoke */
+  }
 }
 
 export async function changeOwnPassword(adminId, { currentPassword, newPassword }) {
@@ -129,6 +152,11 @@ export async function deleteAdmin(actorId, targetId) {
   if (String(actorId) === String(targetId)) throw badRequest("You can't delete your own account");
   const admin = await Admin.findById(targetId);
   if (!admin) throw notFound("Admin");
-  if ((await Admin.estimatedDocumentCount()) <= 1) throw conflict("At least one admin must remain");
+  if ((await Admin.countDocuments()) <= 1) throw conflict("At least one admin must remain");
   await admin.deleteOne();
+  // Two admins deleting each other at the same moment could both pass the check above: undo if none remain.
+  if ((await Admin.countDocuments()) === 0) {
+    await Admin.create(admin.toObject());
+    throw conflict("At least one admin must remain");
+  }
 }

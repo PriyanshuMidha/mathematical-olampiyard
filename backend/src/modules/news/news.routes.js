@@ -4,7 +4,7 @@ import { notFound } from "../../core/errors.js";
 import { uploadFields } from "../uploads/storage.js";
 import * as news from "./news.service.js";
 
-const files = uploadFields([{ name: "image", maxCount: 1 }, { name: "attachment", maxCount: 1 }], "news");
+const files = uploadFields([{ name: "image", maxCount: 1 }, { name: "attachment", maxCount: 1 }]);
 
 export const publicRouter = Router();
 publicRouter.get(

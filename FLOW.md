@@ -127,10 +127,10 @@ flowchart LR
 | Model (module) | Key fields | Notes |
 |-------|-----------|-------|
 | **Admin** (auth) | name, email (login id: email **or username**), passwordHash, tokenVersion | first one via seed, more via Admins page; tokenVersion++ on password change/reset revokes sessions |
-| **News** (news) | title, slug (unique), shortDescription, fullDescription, imageUrl, attachmentUrl, externalLink, level, category, status, isCurrent, showOnHome, sendEmailNotification, publishedAt, emailSentAt | level/category validated vs Taxonomy; indexes for every public query + text search |
+| **News** (news) | title, slug (unique), shortDescription, fullDescription, imageUrl, attachmentUrl, externalLink, level, category, status, isCurrent, showOnHome, sendEmailNotification, publishedAt, emailSentAt | level/category validated vs Taxonomy; 9 indexes, each used by a query (see 2.8a); search = title (×5) + summary |
 | **Result** (results) | title, level, year (1900–2100), session, description, fileUrl, externalLink, status (default draft), publishedAt | |
 | **Resource** (resources) | title, type (`RESOURCE_TYPES`), level, description, fileUrl, externalLink, status (default published) | |
-| **Subscriber** (users, "Users" in UI) | name, email (unique), preference (`PREFERENCES`), active, unsubscribeToken | token never returned by API |
+| **Subscriber** (users, "Users" in UI) | name, email (unique), preference (`PREFERENCES`), active, source (admin/public), confirmToken, confirmSentAt, confirmedAt, unsubscribeToken | admin-added = active at once; website sign-ups inactive until confirmed; tokens never returned by API |
 | **Taxonomy** (taxonomy) | type (level/category), name, description | unique (type,name) |
 | **EmailJob** (notifications) | newsId (**unique**), news snapshot, status queued/sending/sent/failed/skipped, cursor, sent, failed, attempts, lockedUntil, lastError | one job per news → never emailed twice |
 | **EmailDelivery** (notifications) | jobId + subscriberId (unique), createdAt (TTL 90 d) | claimed before each send → never twice per user |
@@ -152,6 +152,8 @@ flowchart LR
 | GET | `/results`, `/resources` | published, max 500, cached |
 | GET | `/taxonomies` | `[{type,name}]`, cached 5 min |
 | GET | `/meta` | `{ resourceTypes, userPreferences, maxUploadMb }` |
+| POST | `/subscribe` | public sign-up `{email, preference?, name?}` → **202** generic "check your inbox" (same reply for everyone). New/inactive address: stored inactive + confirmation email (max 3/address/day). Existing active subscriber: nothing changes. Limit 100/h per network (shared). |
+| GET / POST | `/subscribe/confirm/:token` | GET = confirm button page, POST = activate (token single-use, valid 7 days) |
 | GET | `/unsubscribe/:token` | **confirmation page only** (email scanners auto-open links) |
 | POST | `/unsubscribe/:token` | deactivates user; also RFC 8058 one-click (`List-Unsubscribe-Post`) |
 
@@ -176,7 +178,7 @@ All non-GET admin requests must send `X-Requested-With: olympiad-cms` (CSRF guar
 | POST | `/uploads/r2/start` | `{fileName,fileType,fileSize,folder?}` → presigned PUT (≤5 GB) or multipart session |
 | POST | `/uploads/r2/sign-part`, `/complete`, `/abort` | multipart steps; `key` must match the server-issued pattern |
 | POST | `/media` | single file (R2 or disk) |
-| GET | `/system` | `{ storage: {driver, usedBytes, limitBytes, percent, objects, reconciledAt}, jobs: [{name, everyMinutes, lastRunAt, nextRunAt, lastResult, lastError}] }` |
+| GET | `/system` | `{ storage: {…}, jobs: [{name, everyMinutes, lastRunAt, nextRunAt, lastResult, lastError}], email: {configured, provider, from, replyTo, dailyLimit, sentToday, queued, sending, lastJob, worker: {started, busy, lastCheckAt, pollSeconds}} }` |
 | POST | `/system/jobs/:name/run` | run `storage-reconcile` or `orphan-file-cleanup` now |
 
 Form uploads are stored by `uploads/storage.js`: **Cloudflare R2 when all `R2_*` are set** (multi-instance safe), else local disk (`UPLOAD_DIR`). Replacing or deleting a record deletes its old file in either store; files of failed requests are deleted too.
@@ -191,6 +193,16 @@ Measured against the Atlas cluster: ping ≈ 25 ms, warm home queries 30–200 m
 - `.lean()`, card-field projections, compound indexes for each query, pagination caps, gzip, ETag (`304`), `Cache-Control: public, max-age=30`.
 - `MONGO_AUTO_INDEX` off in production; run `npm run db:indexes` on deploy.
 - Load test (local, single instance, 100 concurrent): `/home` ≈ 2,100 req/s, `/news` ≈ 2,150 req/s, `/news/:slug` ≈ 2,400 req/s, 0 errors.
+
+### 2.8a Storage efficiency
+
+| Area | What is done |
+|------|--------------|
+| News indexes | Only indexes a query uses: `slug` (unique), `status+publishedAt+createdAt`, `status+level+publishedAt+createdAt`, `status+category+publishedAt+createdAt`, `createdAt`, **partial** `home_current` / `home_latest` (contain only published current / on-home items), text `news_search` on title+summary (article body not indexed). Benchmark 2,000 items: 11 indexes 736 KB → 9 indexes 308 KB (−58 %); every public list reads exactly the documents it returns. |
+| Deploy | `npm run db:indexes` drops indexes no longer in the code (removed stale `slug_1_status_1`, `level_1_status_1_publishedAt_-1`, old text/boolean indexes, `emailjobs.status_1` on Atlas 2026-09-29). |
+| Email bookkeeping | `EmailDelivery` rows deleted when a job finishes (TTL 14 d only for jobs that failed for good); finished jobs drop their email snapshot + cursor. |
+| Uploads | Images (JPEG/PNG/WebP) resized to ≤1600 px and re-encoded as WebP (quality 80) when smaller, EXIF/GPS stripped; broken images rejected. Stored names are `<name>-<sha256 prefix>.<ext>`: re-uploading the same file reuses the stored object (no extra disk/R2 quota); a shared file is deleted only when no record uses it. Uploads cached 1 year (`immutable`) since a name never changes content. |
+| Responses | lists return card fields only, admin news list omits article body, `.lean()`, gzip, ETag/304, SWR cache. |
 
 ### 2.9 Email notifications (`modules/notifications`)
 
@@ -211,6 +223,18 @@ flowchart TD
   F -- none left --> I[status sent → emit notification:sent → News.emailSentAt]
   E -. crash .-> J[lock expires → another instance resumes from cursor; max 5 attempts → failed]
 ```
+Daily cap: `NOTIFY_DAILY_LIMIT` (e.g. 300 for Brevo's free plan) is counted in MongoDB across all servers. When reached, the job pauses with its cursor unchanged and `lockedUntil` = next midnight UTC; on resume, already-emailed users are skipped via their delivery rows (tested: limit 3, 5 users → 3 today, 2 after reset, each exactly once).
+Provider: development uses an Ethereal test inbox; production is pre-set for **Brevo** SMTP (`smtp-relay.brevo.com:587`, login + SMTP key).
+
+**Emails sent** (`modules/notifications/templates.js`, HTML + plain text, samples in `docs/email-samples/`):
+1. *News notification*: subject "New Mathematical Olympiad update: <title>", greeting by name, category · level, title, summary, "Read the full update" button → `CLIENT_URL/news/<slug>`, footer with unsubscribe link + one-click `List-Unsubscribe` headers.
+2. *Sign-up confirmation*: subject "Confirm your Mathematical Olympiad updates", "Confirm my email" button → `API_URL/api/subscribe/confirm/<token>`.
+From = `EMAIL_FROM`, Reply-To = `EMAIL_REPLY_TO` (optional). Both count toward `NOTIFY_DAILY_LIMIT`.
+
+**Worker runs in the background automatically**: `server.js` starts it on boot (with the scheduler and cache sync); it polls every `NOTIFY_POLL_MS` and wakes immediately when news is queued. Dashboard → *Email notifications* shows provider, sender, sent today / limit, queue and the worker's last check. Code/env changes need a server restart (`npm run dev` restarts automatically; `npm start` does not).
+
+Failure handling: a 5xx answer for one address (mailbox doesn't exist) skips that address; any other error (provider down, timeout, login failed, 4xx) stops the job without advancing the cursor and retries with back-off (5 min → 6 h, 8 attempts), so an outage never marks a newsletter "sent" with nobody emailed. Sign-up confirmations have their own budget (`NOTIFY_CONFIRM_DAILY_LIMIT`, default 20 % of the daily limit) so fake sign-ups can't consume the news quota; addresses must be a single plain address (no `,<>";()` tricks).
+
 Preference → categories: All updates → all; Results only → Result; Exam dates → Exam Date, Registration; Resources → Syllabus, Sample Paper.
 Verified (automated tests): same news published twice at the same moment → one email per matching user; a job forced to re-run after completion sends nothing again.
 
@@ -230,11 +254,12 @@ Verified (automated tests): same news published twice at the same moment → one
 
 | Area | Measure |
 |------|---------|
-| Config | `assertConfig` fails fast; JWT_SECRET must be ≥32 chars in production (warning in dev) |
+| Config | `assertConfig` fails fast; JWT_SECRET must be ≥32 chars and not the example value in production; `TRUST_PROXY=true` refused in production (use a hop count) |
 | Headers | helmet (CSP, HSTS, nosniff, frame-ancestors, referrer-policy); no `x-powered-by` |
 | Session | JWT (HS256, issuer, `sub`, `ver`) inside an **httpOnly, SameSite** cookie — page JavaScript can't read it (XSS can't steal it). `ver` must equal `Admin.tokenVersion` → password change/reset or admin deletion revokes sessions at once |
 | CSRF | custom `X-Requested-With` header required on writes (forces CORS preflight, only `CLIENT_URL` origins pass) + Origin allowlist check |
-| Login | bcrypt (cost 10, bcryptjs); dummy-hash compare for unknown users; per-IP + per-account limits shared across instances; password policy ≥10 chars, known default rejected; seed has **no default password** |
+| Login | bcrypt (cost 10, bcryptjs); dummy-hash compare for unknown users; per-IP + per-account limits shared across instances; networks with a successful login in the last 30 days are exempt from the account-wide ceiling (attackers on many networks can't lock the admin out); password policy ≥10 chars, known default rejected; seed has **no default password** |
+| Logout | revokes the session server-side (`RevokedToken` by JWT `jti`, auto-expires) — a copied cookie stops working |
 | Input | field whitelists (`pick`), types checked before queries (blocks `{"$ne":""}` injection), `strictQuery`, query strings length-capped, arrays in query ignored, schema max lengths |
 | Links | URL fields must be http(s) or `/uploads/` (no `javascript:`) |
 | Uploads | MIME allowlist; **extension derived from MIME type** (an `.html` name can't be served as HTML); random unique names; files of failed requests deleted; served with `default-src 'none'` + nosniff; URLs built from `API_URL`, never the request Host header |
@@ -262,6 +287,8 @@ Production / multiple instances:
 - Point the load balancer health check at `GET /api/health`.
 - Instances are stateless: auth = JWT, rate limits + email jobs in MongoDB, caches self-expire.
 
+Env files: `backend/.env` (development, organised with `TODO` markers), `backend/.env.production.example` + `frontend/.env.production.example` (templates for the live server), `backend/.env.example` (reference). Root `.gitignore` keeps real `.env` files out of git. Validate with `npm run check --prefix backend`.
+
 Key env vars (full list with comments in `backend/.env.example`): `MONGODB_URI`, `JWT_SECRET`, `API_URL`, `CLIENT_URL`, `TRUST_PROXY`, `MONGO_MIN_POOL_SIZE`, `MONGO_MAX_POOL_SIZE`, `MONGO_AUTO_INDEX`, `HOME_CACHE_MS`, `LIST_CACHE_MS`, `API_RATE_LIMIT_PER_MIN`, `SMTP_*`, `NOTIFY_*`, `MAX_UPLOAD_MB`, `R2_*`. Frontend: `VITE_API_BASE`, `VITE_REQUEST_TIMEOUT_MS`, `VITE_CONTACT_EMAIL`, `VITE_CONTACT_PHONE`.
 
 ---
@@ -286,6 +313,7 @@ PublicLayout (header nav + Admin/Profile link + footer pinned to bottom)
   /results          Results
   /resources        Resources
   /about, /contact  StaticPages
+  /profile          Profile: notify sign-up form, Admin Login / Admin Dashboard link, Saved Items (news, results, resources)
 
 Admin (lazy-loaded chunks — public visitors don't download CMS code)
 Phones (≤ 900 px): header nav wraps, admin sidebar becomes a sticky top bar with a **Menu** button (closes after navigating), cards/forms/tables stack, long text wraps. Verified: no horizontal overflow on 15 routes at 390 px width.
@@ -324,6 +352,7 @@ Cards and detail pages render pictures at 16:9 (no cropping). NewsForm shows whi
 - `useAsync.js` — data/loading/error/reload.
 - `useTaxonomies.js` — levels/categories from `/api/taxonomies` (fallback defaults).
 - `useMeta.js` — resource types + user preferences from `/api/meta` (fetched once, fallback defaults) → FE lists can't drift from backend enums.
+- `savedNews.js` — saved items in **this browser only** (`localStorage.savedItems`, max 300, migrates old `savedNews` key); snapshot of title/summary/links so the list works offline; `saved-news-changed` event keeps all Save buttons in sync. Not synced across devices (no student accounts).
 
 ### 5.3 Page → API map
 
@@ -341,6 +370,8 @@ Cards and detail pages render pictures at 16:9 (no cropping). NewsForm shows whi
 | UsersAdmin | `GET/POST /admin/users`, `PUT /admin/users/:id`, `GET /meta` | add/edit, deactivate/reactivate, CSV export |
 | CategoriesAdmin | `GET/POST/DELETE /admin/taxonomies` | 409 message if in use |
 | AdminsPage | `/admin/me/password`, `/admin/admins` | change own password, add admin, reset/remove others |
+| Profile | `POST /subscribe`, `GET /meta` | NotifyForm (email + preference → confirmation email), saved items list with Remove, admin login/dashboard link |
+| NewsCard / NewsDetail / Results / Resources | – | **Save / Saved** toggle (`SaveNewsButton`); NewsDetail also "Notify Me" → `/profile#notifications` |
 
 ---
 
@@ -442,3 +473,10 @@ Append a line every time this doc changes (date — what changed/discovered).
 - 2026-09-29 — Verification pass: 21/21 backend tests, all 21 frontend routes checked in headless Chrome, backend `npm audit` clean. Upgraded frontend vite 5→8, @vitejs/plugin-react, react-router-dom 6→7 to clear 4 advisories (vite dev-server path traversal / esbuild dev-server CORS / react-router open redirect) → 0 vulnerabilities. Remaining owner tasks: Cloudflare R2 account + `R2_*`, SMTP provider + `SMTP_*`, change the live `admin` password (still the 6-char one from `.env`), production env values at deploy.
 - 2026-09-29 — Added Cloudflare **total storage cap** (`R2_STORAGE_LIMIT_GB`, 9.5 GB; previously 9.5 GB was only a per-file limit) with atomic reservations, size-signed presigned URLs, oversize check, 507 errors; **scheduled jobs** (`core/scheduler.js`: `storage-reconcile` hourly, `orphan-file-cleanup` daily, multi-instance safe) + `/api/admin/system` and dashboard storage/jobs panel; R2 checksum setting for Cloudflare; `R2_ENDPOINT` for tests; fixed: 5xx AppError messages were hidden, file deletion wasn't awaited, forced job runs didn't record status. New tests with an in-memory S3 server (28 total). **Mobile**: fixed news-filter chips overflowing (page was 674 px wide), admin layout on phones (Menu top bar instead of full sidebar), long emails widening pages, oversized headings/padding, stretched checkboxes; 0 horizontal overflow on all 15 routes at 390 px.
 - 2026-09-29 — Rate-limit audit: fixed login lock that still accepted a correct password (guess oracle) → lock now checked before the password; lockout per account + client network (attacker can't lock the real admin out) + 100/15 min per-account ceiling; IPv6 grouped by /64; `RateLimit-*` headers + correct `Retry-After`; memory store key cap; proxy-without-`TRUST_PROXY` warnings. New `test/ratelimit.test.js` (31 tests total). Added 4 default news illustrations (news/results/junior/senior) chosen by category/level, 16:9 media, NewsForm preview.
+- 2026-09-29 — Storage audit & optimisation: news indexes slimmed (text index no longer covers article body; partial indexes for home sections with equality key first so the planner uses them; `createdAt` added to level/category indexes to match list sort) → −58 % index space, exact-match scans; stale indexes removed from Atlas via `db:indexes` (script now also registers `EmailDelivery`); redundant `emailjobs.status_1` removed; unique `unsubscribeToken`; delivery rows deleted after sending (TTL 14 d); finished jobs drop snapshot. Uploads: sharp 0.35.5 image resize → WebP + EXIF strip, content-hash file names with dedupe (local + R2, quota counted once, shared files protected), 1-year immutable caching. 32 tests.
+- 2026-09-29 — Env audit: `backend/.env` reorganised into sections with all 52 settings the code reads (27 added with defaults, all existing values kept; backup in session scratchpad); `frontend/.env` gained `VITE_REQUEST_TIMEOUT_MS`; added `backend/.env.production.example`, `frontend/.env.production.example`, root `.gitignore` (replaced an existing root `.gitignore` whose contents were not read first).
+- 2026-09-29 — Filled env values (except Cloudflare): new strong `ADMIN_PASSWORD` applied to the live `admin` account via seed (old password rejected, sessions logged out); development SMTP = Ethereal test inbox (captures, never delivers; verified end-to-end through the email queue); created gitignored `backend/.env.production` with a fresh production `JWT_SECRET`, Atlas URI and admin username pre-filled. Contact email/phone intentionally left empty (real details unknown).
+- 2026-09-29 — Email provider: compared current free tiers (Brevo 300/day, Mailjet 6,000/mo with branding, Resend 3,000/mo, SMTP2GO 1,000/mo, Mailgun 100/day; SendGrid free plan retired 2025; Amazon SES free tier replaced by credits for new accounts). Chose Brevo: presets in `backend/.env` (commented, ready) and `.env.production` (host/port filled). Added `NOTIFY_DAILY_LIMIT` with pause-and-resume at midnight UTC so free-plan caps never drop emails; new `test/emaillimit.test.js` (33 tests).
+- 2026-09-29 — Documented new features (Profile page, Save/Unsave news/results/resources in the browser, public Notify form, "Back to Main Page" links). Fixed Notify: preference dropdown only showed "All updates" (read `preferences` instead of `userPreferences`); public sign-up now **double opt-in** (inactive until the confirmation link is clicked, generic reply, strangers can't modify/reactivate subscribers, 3 confirmation emails/address/day, 100 sign-ups/h per network). New HTML email templates (news + confirmation), `EMAIL_REPLY_TO`, dashboard *Email notifications* panel (provider, sender, sent today, queue, worker heartbeat), sample emails in `docs/email-samples/`. Found the running dev server started with `npm start` before these changes (old code + no SMTP) → needs restart. 39 tests.
+- 2026-09-29 — At the owner's request the `admin` account password was set back to the previous 6-character one (below the 10-character policy; `npm run seed` refuses until it is longer; sessions were logged out). Added `docs/SETUP.md` (restart, Cloudflare R2, Brevo email, go-live checklist).
+- 2026-09-29 — Full review (two independent reviewers + live probes: all 33 admin routes 401 without login, CSRF/CORS blocked). Backend fixes: provider outage no longer marks a newsletter sent (permanent vs temporary SMTP errors, back-off retries); confirmation emails get their own budget; strict single-address email validation (blocked `a,victim@x` throttle bypass); account-wide login ceiling exempts trusted networks; server-side logout revocation; last-admin race; example JWT secret and `TRUST_PROXY=true` refused in production; identical concurrent uploads no longer 409/double-count or delete shared files; abort can only remove unfinished uploads; cache never stores misses, LRU on hits, unknown level/category not cached; sign-up reply doesn't wait for SMTP (no timing leak). Frontend fixes: Edit→Add keeps no old data (keyed route), uploads get a 10-min timeout, drafts autosaved per tab (survive session expiry/reload), Save handles blocked storage + syncs across tabs, Profile refreshes saved results/resources links, upload size uses server limit with a clear message when R2 isn't set up, a finished R2 upload is reused on retry, scroll-to-top/#anchor on navigation. 45 tests.

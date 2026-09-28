@@ -178,7 +178,7 @@ img.detail-media { width: 100%; object-fit: cover; }
 .load-more { display: flex; justify-content: center; margin-top: 24px; }
 
 /* Dashboard: storage + jobs */
-.system-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 14px; margin-bottom: 30px; }
+.system-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 30px; }
 .system-grid .metric { display: grid; gap: 10px; align-content: start; }
 .storage-figure { font-size: 26px !important; }
 .storage-figure small { font-size: 15px; color: var(--muted); font-weight: 600; }
@@ -274,3 +274,4 @@ img.detail-media { height: auto; aspect-ratio: 16 / 9; object-fit: cover; }
 .remove-saved { justify-self: start; }
 .login-back { display: inline-block; text-align: center; }
 .main-site-link { border: 1px solid #334155; color: white !important; }
+.notice-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #fff7e6; border: 1px solid #f5d39b; border-radius: 10px; padding: 10px 14px; color: #7c4a03; }

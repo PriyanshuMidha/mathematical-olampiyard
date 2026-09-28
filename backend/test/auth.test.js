@@ -89,9 +89,12 @@ describe("auth & admin management", { skip }, () => {
     assert.equal((await app.login({ email: ADMIN.email, password: "Another-pass-123" })).res.status, 200);
   });
 
-  test("logout clears the cookie", async () => {
-    const res = await app.call("/api/admin/logout", { method: "POST" });
+  test("logout clears the cookie and ends the session on the server", async () => {
+    const { cookie } = await app.login({ email: ADMIN.email, password: "Another-pass-123" });
+    assert.equal((await app.call("/api/admin/me", { cookie })).status, 200);
+    const res = await app.call("/api/admin/logout", { method: "POST", cookie });
     assert.equal(res.status, 200);
     assert.match(res.headers.get("set-cookie"), /olympiad_admin=;/);
+    assert.equal((await app.call("/api/admin/me", { cookie })).status, 401, "a copied cookie no longer works");
   });
 });

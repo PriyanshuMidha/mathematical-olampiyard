@@ -3,12 +3,28 @@ import { useEffect, useState } from "react";
 import NewsCard from "../../components/NewsCard.jsx";
 import DownloadLink from "../../components/DownloadLink.jsx";
 import NotifyForm from "../../components/NotifyForm.jsx";
+import { api } from "../../services/api.js";
 import { currentSession } from "../../services/auth.js";
 import { removeSavedNews, savedNews } from "../../services/savedNews.js";
 
 export default function Profile() {
   const [items, setItems] = useState(() => savedNews());
+  // Saved results/resources are snapshots; refresh them from the site so download links are current
+  // (a file may have been replaced or the item removed since it was saved).
+  const [live, setLive] = useState(null);
   const session = currentSession();
+
+  useEffect(() => {
+    Promise.all([api.results(), api.resources()])
+      .then(([results, resources]) => setLive(new Map([...results, ...resources].map((doc) => [doc._id, doc]))))
+      .catch(() => setLive(null));
+  }, []);
+
+  const shown = items.map((item) => {
+    if (item.type === "news" || !live || !item._id) return item;
+    const fresh = live.get(item._id);
+    return fresh ? { ...item, ...fresh, type: item.type, key: item.key } : { ...item, unavailable: true };
+  });
 
   useEffect(() => {
     const update = () => setItems(savedNews());
@@ -58,7 +74,7 @@ export default function Profile() {
           <p className="empty">No saved items yet. Open news, results or resources and press Save.</p>
         ) : (
           <div className="card-grid wide">
-            {items.map((item) => (
+            {shown.map((item) => (
               <div className="saved-card" key={item.key || item.slug}>
                 {item.type === "news" ? (
                   <NewsCard item={item} />
@@ -68,7 +84,7 @@ export default function Profile() {
                     <h3>{item.title}</h3>
                     <p>{[item.level, item.year, item.session].filter(Boolean).join(" · ")}</p>
                     {item.shortDescription && <p className="muted">{item.shortDescription}</p>}
-                    <DownloadLink item={item} />
+                    {item.unavailable ? <span className="muted">No longer available on the site</span> : <DownloadLink item={item} />}
                   </article>
                 )}
                 <button className="ghost-dark remove-saved" onClick={() => remove(item.key || item.slug)}>Remove</button>

@@ -9,7 +9,7 @@ const deliverySchema = new mongoose.Schema({
 });
 
 deliverySchema.index({ jobId: 1, subscriberId: 1 }, { unique: true });
-// Old delivery rows are only needed while a job can still be retried.
-deliverySchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 3600 });
+// Rows are deleted when their job finishes; this TTL only cleans up after jobs that failed for good.
+deliverySchema.index({ createdAt: 1 }, { expireAfterSeconds: 14 * 24 * 3600 });
 
 export default mongoose.model("EmailDelivery", deliverySchema);

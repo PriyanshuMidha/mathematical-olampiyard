@@ -5,7 +5,7 @@ import { badRequest, notFound } from "../../core/errors.js";
 import { events } from "../../core/events.js";
 import { assertSafeUrls, pick, queryString, toBool } from "../../core/validate.js";
 import { enqueueNewsEmail } from "../notifications/notifications.service.js";
-import { assertTaxonomy, registerTaxonomyUsage } from "../taxonomy/taxonomy.service.js";
+import { assertTaxonomy, listTaxonomies, registerTaxonomyUsage } from "../taxonomy/taxonomy.service.js";
 import { registerFileReferences } from "../uploads/references.js";
 import { fileUrl, removeStoredFile } from "../uploads/storage.js";
 import { makeSlug } from "./slug.js";
@@ -18,7 +18,9 @@ export const CARD_FIELDS = "title slug shortDescription imageUrl level category 
 const CACHE = "news:";
 const published = { status: "published" };
 
-registerTaxonomyUsage(async (type, name) => Boolean(await News.exists({ [type === "level" ? "level" : "category"]: name })));
+// Uses the status+level / status+category indexes (both statuses listed so the index prefix applies).
+const ANY_STATUS = { $in: ["draft", "published"] };
+registerTaxonomyUsage(async (type, name) => Boolean(await News.exists({ status: ANY_STATUS, [type === "level" ? "level" : "category"]: name })));
 registerFileReferences(async () => [...(await News.distinct("imageUrl")), ...(await News.distinct("attachmentUrl"))]);
 
 // Keeps emailSentAt in sync without the notifications module importing this one.
@@ -64,7 +66,12 @@ function queueEmail(news) {
 
 // ---------- public ----------
 
-export function listPublished(query) {
+// Only real level/category names become cache keys; anything else can't match and returns nothing.
+async function isKnown(type, value) {
+  return (await listTaxonomies()).some((t) => t.type === type && t.name === value);
+}
+
+export async function listPublished(query) {
   const level = queryString(query.level, 60);
   const category = queryString(query.category, 60);
   const q = queryString(query.q, 100);
@@ -85,13 +92,15 @@ export function listPublished(query) {
       .limit(limit)
       .lean();
 
+  if ((level && !(await isKnown("level", level))) || (category && !(await isKnown("category", category)))) return [];
   // Free-text searches are not cached (unbounded key space); filter combinations are.
   if (q) return run();
   return cached(`${CACHE}list:${level}|${category}|${filter.isCurrent || ""}|${page}|${limit}`, config.cache.listTtlMs, run);
 }
 
-export function getPublishedBySlug(slug) {
+export async function getPublishedBySlug(slug) {
   const safeSlug = String(slug).toLowerCase().slice(0, 220);
+  if (!/^[a-z0-9-]+$/.test(safeSlug)) return null;
   return cached(`${CACHE}detail:${safeSlug}`, config.cache.listTtlMs, async () => {
     const news = await News.findOne({ slug: safeSlug, ...published }).lean();
     if (!news) return null;

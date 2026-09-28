@@ -1,8 +1,9 @@
 import React, { Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 import PublicLayout from "./components/PublicLayout.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import ScrollManager from "./components/ScrollManager.jsx";
 import Home from "./pages/public/Home.jsx";
 import NewsList from "./pages/public/NewsList.jsx";
 import NewsDetail from "./pages/public/NewsDetail.jsx";
@@ -25,9 +26,17 @@ const UsersAdmin = adminPage("UsersAdmin");
 const AdminsPage = lazy(() => import("./pages/admin/AdminsPage.jsx"));
 import "./styles/main.css";
 
+// "Add news" and "Edit news" share one component; a key per item gives each a fresh form
+// (otherwise switching from Edit to Add would keep the previous article's fields).
+function NewsFormRoute() {
+  const { id } = useParams();
+  return <NewsForm key={id || "new"} />;
+}
+
 function App() {
   return (
     <BrowserRouter>
+      <ScrollManager />
       <Suspense fallback={<p className="empty">Loading...</p>}>
       <Routes>
         <Route element={<PublicLayout />}>
@@ -48,8 +57,8 @@ function App() {
         >
           <Route index element={<Dashboard />} />
           <Route path="news" element={<ManageNews />} />
-          <Route path="news/new" element={<NewsForm />} />
-          <Route path="news/:id/edit" element={<NewsForm />} />
+          <Route path="news/new" element={<NewsFormRoute />} />
+          <Route path="news/:id/edit" element={<NewsFormRoute />} />
           <Route path="results" element={<ResultsAdmin />} />
           <Route path="resources" element={<ResourcesAdmin />} />
           <Route path="users" element={<UsersAdmin />} />

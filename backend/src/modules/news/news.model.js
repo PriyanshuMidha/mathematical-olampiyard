@@ -25,12 +25,20 @@ const newsSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-newsSchema.index({ title: "text", shortDescription: "text", fullDescription: "text" });
+// Every index costs disk + RAM and slows each save, so only indexes that a real query uses are kept.
+// Search covers title + summary (not the full article body, which can be 100 KB and would make the
+// text index many times bigger than the data itself). Title matches rank higher.
+newsSchema.index({ title: "text", shortDescription: "text" }, { name: "news_search", weights: { title: 5, shortDescription: 1 } });
+// Public lists / drafts count / cursor for "latest".
 newsSchema.index({ status: 1, publishedAt: -1, createdAt: -1 });
-newsSchema.index({ status: 1, isCurrent: 1, publishedAt: -1 });
-newsSchema.index({ status: 1, showOnHome: 1, publishedAt: -1 });
-newsSchema.index({ status: 1, level: 1, publishedAt: -1 });
-newsSchema.index({ status: 1, category: 1, publishedAt: -1 });
+// Home "current" and "on home" sections: partial indexes only contain the few matching documents.
+newsSchema.index({ isCurrent: 1, publishedAt: -1 }, { name: "home_current", partialFilterExpression: { status: "published", isCurrent: true } });
+newsSchema.index({ showOnHome: 1, publishedAt: -1 }, { name: "home_latest", partialFilterExpression: { status: "published", showOnHome: true } });
+// Level / category filters and "related news".
+// (createdAt included because public lists sort by publishedAt, then createdAt.)
+newsSchema.index({ status: 1, level: 1, publishedAt: -1, createdAt: -1 });
+newsSchema.index({ status: 1, category: 1, publishedAt: -1, createdAt: -1 });
+// Admin list + dashboard "recent".
 newsSchema.index({ createdAt: -1 });
 
 export default mongoose.model("News", newsSchema);
