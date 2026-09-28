@@ -34,7 +34,7 @@ export default function Profile() {
         </div>
       </div>
 
-      <section className="profile-panel">
+      <section id="notifications" className="profile-panel">
         <h2>Notification Emails</h2>
         <p className="muted">Add your email here to get notified when new Olympiad news is published.</p>
         <NotifyForm />

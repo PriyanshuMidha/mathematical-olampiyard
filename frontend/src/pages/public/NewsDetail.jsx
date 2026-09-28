@@ -33,6 +33,7 @@ export default function NewsDetail() {
           <div className="hero-actions">
             {news.attachmentUrl && <a className="button" href={news.attachmentUrl} target="_blank" rel="noreferrer">Download Notice</a>}
             {news.externalLink && <a className="button secondary" href={news.externalLink} target="_blank" rel="noreferrer">Open Link</a>}
+            <Link className="button notify-detail" to="/profile#notifications">Notify Me</Link>
             <SaveNewsButton item={news} />
           </div>
         </article>
