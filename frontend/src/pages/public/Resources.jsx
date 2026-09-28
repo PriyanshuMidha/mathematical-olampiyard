@@ -1,4 +1,5 @@
 import DownloadLink from "../../components/DownloadLink.jsx";
+import SaveNewsButton from "../../components/SaveNewsButton.jsx";
 import { Status } from "../../components/Status.jsx";
 import { api } from "../../services/api.js";
 import { useAsync } from "../../services/useAsync.js";
@@ -21,7 +22,10 @@ export default function Resources() {
             <h3>{resource.title}</h3>
             <p>{resource.level}</p>
             {resource.description && <p className="muted">{resource.description}</p>}
-            <DownloadLink item={resource} />
+            <div className="row-actions">
+              <DownloadLink item={resource} />
+              <SaveNewsButton item={resource} type="resource" small />
+            </div>
           </article>
         ))}
       </div>

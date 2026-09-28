@@ -1,28 +1,55 @@
-const KEY = "savedNews";
+const LEGACY_KEY = "savedNews";
+const KEY = "savedItems";
 
-function read() {
+function itemKey(item, type = item.type || "news") {
+  return `${type}:${item.slug || item._id || item.title}`;
+}
+
+function readRaw(key) {
   try {
-    const value = JSON.parse(localStorage.getItem(KEY) || "[]");
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
     return Array.isArray(value) ? value : [];
   } catch {
     return [];
   }
 }
 
-function write(items) {
+function read() {
+  const current = readRaw(KEY);
+  const legacy = readRaw(LEGACY_KEY).map((item) => ({ ...item, type: item.type || "news", key: item.key || itemKey(item, "news") }));
+  const merged = [...current, ...legacy];
+  const seen = new Set();
+  return merged.filter((item) => {
+    const key = item.key || itemKey(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function writeItems(items) {
   localStorage.setItem(KEY, JSON.stringify(items));
+  localStorage.removeItem(LEGACY_KEY);
   window.dispatchEvent(new CustomEvent("saved-news-changed"));
 }
 
-function snapshot(item) {
+function snapshot(item, type = "news") {
+  const key = itemKey(item, type);
   return {
+    key,
+    type,
     _id: item._id,
     title: item.title,
     slug: item.slug,
-    shortDescription: item.shortDescription,
+    shortDescription: item.shortDescription || item.description || "",
     imageUrl: item.imageUrl,
     level: item.level,
-    category: item.category,
+    category: item.category || item.type,
+    year: item.year,
+    session: item.session,
+    fileUrl: item.fileUrl,
+    attachmentUrl: item.attachmentUrl,
+    externalLink: item.externalLink,
     publishedAt: item.publishedAt,
     savedAt: new Date().toISOString()
   };
@@ -32,24 +59,27 @@ export function savedNews() {
   return read().sort((a, b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0));
 }
 
-export function isSaved(slug) {
-  return read().some((item) => item.slug === slug);
+export function isSaved(item, type = "news") {
+  const key = typeof item === "string" ? `news:${item}` : itemKey(item, type);
+  return read().some((saved) => saved.key === key || saved.slug === item);
 }
 
-export function saveNews(item) {
-  const current = read().filter((saved) => saved.slug !== item.slug);
-  write([snapshot(item), ...current].slice(0, 200));
+export function saveNews(item, type = "news") {
+  const next = snapshot(item, type);
+  const current = read().filter((saved) => saved.key !== next.key);
+  writeItems([next, ...current].slice(0, 300));
 }
 
-export function removeSavedNews(slug) {
-  write(read().filter((item) => item.slug !== slug));
+export function removeSavedNews(itemOrKey) {
+  const key = typeof itemOrKey === "string" && itemOrKey.includes(":") ? itemOrKey : `news:${itemOrKey}`;
+  writeItems(read().filter((item) => item.key !== key && item.slug !== itemOrKey));
 }
 
-export function toggleSavedNews(item) {
-  if (isSaved(item.slug)) {
-    removeSavedNews(item.slug);
+export function toggleSavedNews(item, type = "news") {
+  if (isSaved(item, type)) {
+    removeSavedNews(itemKey(item, type));
     return false;
   }
-  saveNews(item);
+  saveNews(item, type);
   return true;
 }

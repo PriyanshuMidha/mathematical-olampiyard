@@ -1,4 +1,5 @@
 import DownloadLink from "../../components/DownloadLink.jsx";
+import SaveNewsButton from "../../components/SaveNewsButton.jsx";
 import { Status } from "../../components/Status.jsx";
 import { api } from "../../services/api.js";
 import { useAsync } from "../../services/useAsync.js";
@@ -22,7 +23,10 @@ export default function Results() {
               <span>{[result.level, result.year, result.session].filter(Boolean).join(" · ")}</span>
               {result.description && <span>{result.description}</span>}
             </div>
-            <DownloadLink item={result} />
+            <div className="row-actions">
+              <DownloadLink item={result} />
+              <SaveNewsButton item={result} type="result" small />
+            </div>
           </div>
         ))}
       </div>

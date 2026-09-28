@@ -1,20 +1,20 @@
 import { useEffect, useState } from "react";
 import { isSaved, toggleSavedNews } from "../services/savedNews.js";
 
-export default function SaveNewsButton({ item, small = false }) {
-  const [saved, setSaved] = useState(() => isSaved(item.slug));
+export default function SaveNewsButton({ item, type = "news", small = false }) {
+  const [saved, setSaved] = useState(() => isSaved(item, type));
 
   useEffect(() => {
-    const update = () => setSaved(isSaved(item.slug));
+    const update = () => setSaved(isSaved(item, type));
     update();
     window.addEventListener("saved-news-changed", update);
     return () => window.removeEventListener("saved-news-changed", update);
-  }, [item.slug]);
+  }, [item, type]);
 
   function click(event) {
     event.preventDefault();
     event.stopPropagation();
-    setSaved(toggleSavedNews(item));
+    setSaved(toggleSavedNews(item, type));
   }
 
   return (

@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import NewsCard from "../../components/NewsCard.jsx";
+import DownloadLink from "../../components/DownloadLink.jsx";
+import NotifyForm from "../../components/NotifyForm.jsx";
 import { currentSession } from "../../services/auth.js";
 import { removeSavedNews, savedNews } from "../../services/savedNews.js";
 
@@ -24,13 +26,19 @@ export default function Profile() {
       <div className="page-title profile-heading">
         <div>
           <h1>Profile</h1>
-          <p>Save Olympiad news in this browser and access admin tools when you are signed in.</p>
+          <p>Manage notifications, save Olympiad updates in this browser, and access admin tools when signed in.</p>
         </div>
         <div className="row-actions">
           <Link className="button secondary" to="/">Main Page</Link>
           {session ? <Link className="button" to="/admin">Admin Dashboard</Link> : <Link className="button" to="/admin/login">Admin Login</Link>}
         </div>
       </div>
+
+      <section className="profile-panel">
+        <h2>Notification Emails</h2>
+        <p className="muted">Add your email here to get notified when new Olympiad news is published.</p>
+        <NotifyForm />
+      </section>
 
       <section className="profile-panel">
         <h2>{session ? "Admin Access" : "Admin Login"}</h2>
@@ -43,17 +51,27 @@ export default function Profile() {
 
       <section>
         <div className="section-heading">
-          <h2>Saved News</h2>
+          <h2>Saved Items</h2>
           <Link className="text-link" to="/news">Browse news</Link>
         </div>
         {!items.length ? (
-          <p className="empty">No saved news yet. Open any news item and press Save.</p>
+          <p className="empty">No saved items yet. Open news, results or resources and press Save.</p>
         ) : (
           <div className="card-grid wide">
             {items.map((item) => (
-              <div className="saved-card" key={item.slug}>
-                <NewsCard item={item} />
-                <button className="ghost-dark remove-saved" onClick={() => remove(item.slug)}>Remove</button>
+              <div className="saved-card" key={item.key || item.slug}>
+                {item.type === "news" ? (
+                  <NewsCard item={item} />
+                ) : (
+                  <article className="resource-card">
+                    <span>{item.type === "result" ? "Result" : item.category || "Resource"}</span>
+                    <h3>{item.title}</h3>
+                    <p>{[item.level, item.year, item.session].filter(Boolean).join(" · ")}</p>
+                    {item.shortDescription && <p className="muted">{item.shortDescription}</p>}
+                    <DownloadLink item={item} />
+                  </article>
+                )}
+                <button className="ghost-dark remove-saved" onClick={() => remove(item.key || item.slug)}>Remove</button>
               </div>
             ))}
           </div>
