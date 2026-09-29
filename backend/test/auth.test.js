@@ -20,6 +20,19 @@ describe("auth & admin management", { skip }, () => {
     assert.equal((await app.call("/api/admin/me", { cookie })).status, 200);
   });
 
+  test("cross-site admin login cookie is usable by hosted frontend", async () => {
+    const res = await app.call("/api/admin/login", {
+      method: "POST",
+      headers: { Origin: "http://localhost:5173" },
+      body: ADMIN
+    });
+    assert.equal(res.status, 200);
+    const setCookie = res.headers.get("set-cookie");
+    assert.match(setCookie, /HttpOnly/i);
+    assert.match(setCookie, /Secure/i);
+    assert.match(setCookie, /SameSite=None/i);
+  });
+
   test("admin routes need a session", async () => {
     assert.equal((await app.call("/api/admin/me")).status, 401);
     assert.equal((await app.call("/api/admin/me", { cookie: "olympiad_admin=garbage" })).status, 401);
