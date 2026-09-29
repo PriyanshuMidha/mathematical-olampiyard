@@ -15,14 +15,20 @@ export default function AdminLogin() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (busy) return;
     setError("");
     setBusy(true);
     try {
       const response = await api.adminLogin({ email: username, password });
+      try {
+        await api.me({ skipUnauthorizedRedirect: true });
+      } catch (_sessionError) {
+        throw new Error("Login succeeded, but the browser did not keep the admin session cookie. Please check the backend COOKIE_SAMESITE, COOKIE_SECURE, CLIENT_URL, and API URL settings.");
+      }
       saveSession(response);
       navigate("/admin");
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Login failed. Please try again.");
     } finally {
       setBusy(false);
     }

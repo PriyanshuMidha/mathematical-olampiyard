@@ -22,6 +22,7 @@ async function rawRequest(path, options = {}) {
 }
 
 async function request(path, options = {}) {
+  const { skipUnauthorizedRedirect = false, ...fetchOptions } = options;
   const isForm = options.body instanceof FormData;
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), isForm ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
@@ -29,7 +30,7 @@ async function request(path, options = {}) {
 
   try {
     response = await fetch(`${API_BASE}${path}`, {
-      ...options,
+      ...fetchOptions,
       signal: controller.signal,
       // Sends the httpOnly session cookie. The custom header is the API's CSRF check.
       credentials: "include",
@@ -48,7 +49,7 @@ async function request(path, options = {}) {
     window.clearTimeout(timeoutId);
   }
 
-  if (response.status === 401 && path.startsWith("/admin") && path !== "/admin/login") {
+  if (!skipUnauthorizedRedirect && response.status === 401 && path.startsWith("/admin") && path !== "/admin/login") {
     clearSession();
     window.location.assign("/admin/login?expired=1");
     throw new Error("Session expired. Please log in again.");
@@ -89,7 +90,7 @@ export const api = {
 
   adminLogin: (payload) => request("/admin/login", json("POST", payload)),
   adminLogout: () => request("/admin/logout", { method: "POST" }),
-  me: () => request("/admin/me"),
+  me: (options = {}) => request("/admin/me", options),
   changePassword: (payload) => request("/admin/me/password", json("POST", payload)),
   admins: () => request("/admin/admins"),
   createAdmin: (payload) => request("/admin/admins", json("POST", payload)),
