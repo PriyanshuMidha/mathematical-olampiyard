@@ -16,6 +16,14 @@ function trustProxy(value) {
   return Number.isNaN(Number(value)) ? value : Number(value);
 }
 
+function originOf(value) {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "";
+  }
+}
+
 export const config = Object.freeze({
   env,
   isProd,
@@ -138,6 +146,13 @@ export function assertConfig() {
   }
   if (!["lax", "strict", "none"].includes(config.cookie.sameSite)) errors.push("COOKIE_SAMESITE must be lax, strict or none");
   if (config.cookie.sameSite === "none" && !config.cookie.secure) errors.push("COOKIE_SAMESITE=none requires COOKIE_SECURE=true (HTTPS)");
+  if (
+    config.isProd &&
+    config.cookie.sameSite !== "none" &&
+    config.clientUrls.some((clientUrl) => originOf(clientUrl) && originOf(clientUrl) !== originOf(config.apiUrl))
+  ) {
+    errors.push("COOKIE_SAMESITE must be none when CLIENT_URL and API_URL are different origins");
+  }
   if (/change-this|example|secret-at-least/i.test(config.jwt.secret)) {
     const message = "JWT_SECRET is still the example value; generate one with `openssl rand -hex 32`";
     if (config.isProd) errors.push(message);
