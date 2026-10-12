@@ -8,7 +8,10 @@ import { AppError } from "../../core/errors.js";
 // An upload first *reserves* its size with one atomic conditional update, so two admins (or two
 // API instances) uploading at the same moment can never push the total past the limit.
 // The hourly reconcile job recounts the real bucket and corrects any drift (abandoned uploads, etc.).
-export const LIMIT_BYTES = Math.floor(config.r2.storageLimitGb * 1024 ** 3);
+// Decimal GB (1 GB = 1,000,000,000 bytes), the way storage plans are billed: 9.5 GB stays under a
+// 10 GB free tier however the provider counts. (Binary 1024^3 would make "9.5 GB" = 10.2 billion bytes.)
+export const GB = 1_000_000_000;
+export const LIMIT_BYTES = Math.floor(config.r2.storageLimitGb * GB);
 const ID = "r2";
 const PENDING_TTL_MS = 6 * 60 * 60_000; // reservations of uploads never finished are dropped after this
 
@@ -31,7 +34,7 @@ reservationSchema.index({ status: 1, createdAt: 1 });
 const StorageReservation = mongoose.model("StorageReservation", reservationSchema);
 
 function gb(bytes) {
-  return (bytes / 1024 ** 3).toFixed(2);
+  return (bytes / GB).toFixed(2);
 }
 
 async function ensureUsageDoc() {

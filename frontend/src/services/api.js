@@ -5,6 +5,9 @@ const LOCAL_HOSTS = ["localhost", "127.0.0.1"];
 function apiBase() {
   const configured = import.meta.env.VITE_API_BASE;
   if (!configured) return `${window.location.protocol}//${window.location.hostname}:5001/api`;
+  // A relative value ("/api") means the API is served through this website's own address
+  // (e.g. a Render rewrite rule). The login cookie is then first-party, which Safari/iPhone requires.
+  if (configured.startsWith("/")) return configured.replace(/\/$/, "");
   const url = new URL(configured);
   // localhost and 127.0.0.1 are different sites for cookies; follow whichever one the page uses.
   if (LOCAL_HOSTS.includes(url.hostname) && LOCAL_HOSTS.includes(window.location.hostname)) url.hostname = window.location.hostname;

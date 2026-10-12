@@ -109,7 +109,10 @@ export const config = Object.freeze({
     enabled: bool(process.env.JOBS_ENABLED, true),
     storageReconcileMs: num(process.env.STORAGE_RECONCILE_MS, 60 * 60_000),
     orphanCleanupMs: num(process.env.ORPHAN_CLEANUP_MS, 24 * 60 * 60_000),
-    orphanGraceHours: num(process.env.ORPHAN_GRACE_HOURS, 24)
+    orphanGraceHours: num(process.env.ORPHAN_GRACE_HOURS, 24),
+    // Keeps the MongoDB connection active with a real write, well inside any inactivity window a host
+    // might apply (default: daily). This only runs while the app itself is awake - see mongoKeepalive.js.
+    mongoKeepaliveMs: num(process.env.MONGO_KEEPALIVE_MS, 24 * 60 * 60_000)
   },
 
   notifications: {

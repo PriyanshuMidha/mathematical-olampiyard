@@ -6,6 +6,7 @@ import multer from "multer";
 import { config } from "./config/env.js";
 import { isDbReady } from "./config/db.js";
 import { AppError } from "./core/errors.js";
+import "./core/mongoKeepalive.js"; // registers the MongoDB keep-alive job (side effect import)
 import { rateLimit } from "./core/rateLimit.js";
 import { securityHeaders, uploadHeaders } from "./core/security.js";
 import { requireAdmin, requireSameOriginWrite } from "./modules/auth/auth.middleware.js";

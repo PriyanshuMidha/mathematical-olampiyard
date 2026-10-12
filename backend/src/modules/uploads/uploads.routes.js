@@ -3,7 +3,7 @@ import { asyncHandler as h } from "../../core/asyncHandler.js";
 import { badRequest } from "../../core/errors.js";
 import Media from "./media.model.js";
 import { fileUrl, uploadSingle } from "./storage.js";
-import { jobStatus, runJobNow } from "../../core/scheduler.js";
+import { jobNames, jobStatus, runJobNow } from "../../core/scheduler.js";
 import "./jobs.js";
 import { emailStatus } from "../notifications/status.js";
 import { usage } from "./quota.js";
@@ -28,7 +28,7 @@ adminRouter.get(
 adminRouter.post(
   "/system/jobs/:name/run",
   h(async (req, res) => {
-    if (!["storage-reconcile", "orphan-file-cleanup"].includes(req.params.name)) throw badRequest("Unknown job");
+    if (!jobNames().includes(req.params.name)) throw badRequest("Unknown job");
     res.json({ result: await runJobNow(req.params.name) });
   })
 );

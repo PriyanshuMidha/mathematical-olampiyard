@@ -78,6 +78,14 @@ export async function startTestApp(testFile, extraEnv = {}) {
     CACHE_SYNC_MS: "200",
     MONGO_MIN_POOL_SIZE: "1",
     API_RATE_LIMIT_PER_MIN: "0",
+    // Never use the real Cloudflare bucket from backend/.env in tests (dotenv won't override these
+    // empty values). Tests that need R2 pass a fake S3 server via extraEnv.
+    R2_ACCOUNT_ID: "",
+    R2_ACCESS_KEY_ID: "",
+    R2_SECRET_ACCESS_KEY: "",
+    R2_BUCKET: "",
+    R2_PUBLIC_URL: "",
+    R2_ENDPOINT: "",
     UPLOAD_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "olympiad-uploads-")),
     ...extraEnv
   });

@@ -15,12 +15,12 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { config } from "../../config/env.js";
 import { AppError, badRequest } from "../../core/errors.js";
 import { ALLOWED_TYPES, ALLOWED_TYPES_MESSAGE, safeBaseName } from "./fileTypes.js";
-import { LIMIT_BYTES, isPending, markDone, onObjectDeleted, release, reserve } from "./quota.js";
+import { GB, LIMIT_BYTES, isPending, markDone, onObjectDeleted, release, reserve } from "./quota.js";
 
 // Cloudflare R2 (S3-compatible) direct-from-browser uploads. Works across any number of API instances.
 const r2 = config.r2;
 // A single file can never be larger than the whole storage cap.
-export const MAX_R2_UPLOAD_BYTES = Math.min(Math.floor(r2.maxUploadGb * 1024 ** 3), LIMIT_BYTES);
+export const MAX_R2_UPLOAD_BYTES = Math.min(Math.floor(r2.maxUploadGb * GB), LIMIT_BYTES);
 export const R2_PART_SIZE = r2.partSizeBytes;
 const DIRECT_UPLOAD_LIMIT = 5 * 1024 * 1024 * 1024;
 // Direct browser uploads: <folder>/<date>/<name>. Server uploads (content-addressed): files/<name>-<hash>.<ext>.

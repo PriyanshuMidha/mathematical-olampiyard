@@ -21,6 +21,10 @@ const jobs = [];
 let timer;
 let stopped = true;
 
+export function jobNames() {
+  return jobs.map((job) => job.name);
+}
+
 export function registerJob({ name, everyMs, run, lockMs = 15 * 60_000 }) {
   jobs.push({ name, everyMs, run, lockMs, running: false });
 }

@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 import { startFakeS3 } from "./fakeS3.js";
 import { skip, startTestApp } from "./helpers.js";
 
-// Storage cap is set to 0.000001 GB = 1073 bytes so the limit is easy to hit.
-const LIMIT = Math.floor(0.000001 * 1024 ** 3);
+// Storage cap is set to 0.000001 GB = 1000 bytes so the limit is easy to hit.
+const LIMIT = Math.floor(0.000001 * 1e9);
 
 describe("Cloudflare R2 storage cap + scheduled jobs", { skip }, () => {
   let app;
@@ -177,8 +177,10 @@ describe("Cloudflare R2 storage cap + scheduled jobs", { skip }, () => {
     const system = (await app.call("/api/admin/system", { cookie })).json;
     assert.equal(system.storage.driver, "r2");
     assert.equal(system.storage.limitBytes, LIMIT);
-    assert.deepEqual(system.jobs.map((j) => j.name).sort(), ["orphan-file-cleanup", "storage-reconcile"]);
-    assert.ok(system.jobs.every((j) => j.lastRunAt));
+    assert.deepEqual(system.jobs.map((j) => j.name).sort(), ["mongo-keepalive", "orphan-file-cleanup", "storage-reconcile"]);
+    // The two storage jobs were run by earlier tests in this file (mongo-keepalive has its own test).
+    const storageJobs = system.jobs.filter((j) => j.name !== "mongo-keepalive");
+    assert.ok(storageJobs.every((j) => j.lastRunAt));
     const dashboard = (await app.call("/api/admin/dashboard", { cookie })).json;
     assert.equal(dashboard.storage.driver, "r2");
   });

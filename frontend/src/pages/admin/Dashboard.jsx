@@ -9,8 +9,9 @@ function formatBytes(bytes) {
   const units = ["B", "KB", "MB", "GB"];
   let value = bytes;
   let i = 0;
-  while (value >= 1024 && i < units.length - 1) {
-    value /= 1024;
+  // Decimal units, matching how the storage cap and Cloudflare count GB.
+  while (value >= 1000 && i < units.length - 1) {
+    value /= 1000;
     i += 1;
   }
   return `${value.toFixed(i >= 3 ? 2 : 0)} ${units[i]}`;

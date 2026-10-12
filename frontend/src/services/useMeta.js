@@ -6,7 +6,7 @@ const FALLBACK = {
   resourceTypes: ["Syllabus", "Sample Paper", "Previous Paper", "Formula Sheet", "Answer Key", "Guide"],
   userPreferences: ["All updates", "Results only", "Exam dates", "Resources"],
   maxUploadMb: 50,
-  maxCloudUploadBytes: 9.5 * 1024 ** 3,
+  maxCloudUploadBytes: 9.5e9,
   cloudUploads: false
 };
 
